@@ -12,6 +12,9 @@ The app loads HRMIS in `flutter_inappwebview`, injects JavaScript for login and 
 - WFO attendance selection and description injection.
 - GPS wait period before saving attendance.
 - Detection for already-recorded attendance messages.
+- Android notifications for HRMIS delay and absence warnings after attendance.
+- Dashboard view with today's attendance status, delay minutes, and absence days.
+- Bottom navigation for switching between Dashboard and Automation WebView.
 - Android launcher icon support using `assets/images/app_logo.png`.
 
 ## Requirements
@@ -74,6 +77,18 @@ The generated APK is available at:
 build/app/outputs/flutter-apk/app-debug.apk
 ```
 
+Build the arm64 release APK used for device installation:
+
+```bash
+flutter build apk --target-platform android-arm64 --split-per-abi
+```
+
+The generated release APK is available at:
+
+```text
+build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+```
+
 ## Android Package
 
 The Android package name is:
@@ -90,8 +105,10 @@ The Android app requests:
 - `ACCESS_FINE_LOCATION`
 - `ACCESS_COARSE_LOCATION`
 - `CAMERA`
+- `POST_NOTIFICATIONS`
 
 Location and camera permissions are requested before loading the WebView.
+Notification permission is requested so the app can alert users about HRMIS delay or absence information.
 
 ## Environment Variables
 
@@ -107,7 +124,8 @@ Never commit the `.env` file. Use `.env.example` as the public template.
 ```text
 lib/
   config.dart        # Environment loading
-  main.dart          # WebView, permission guard, and automation flow
+  main.dart          # Dashboard, bottom navigation, WebView automation flow
+  notification_service.dart # Local Android notifications
 assets/images/
   app_logo.png       # Source app logo
 android/

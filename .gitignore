@@ -11,6 +11,8 @@ pubspec.lock.backup
 .env
 .env.*
 !.env.example
+*.jks
+*.keystore
 
 # IDE and OS files
 .idea/
