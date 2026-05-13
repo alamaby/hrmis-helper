@@ -1,6 +1,6 @@
 # HRMIS Helper
 
-HRMIS Helper is a Flutter application that automates the attendance workflow for `https://hrmis.neuron.id` using an embedded WebView.
+HRMIS Helper is a Flutter application that assists HRMIS workflows for `https://hrmis.neuron.id` using an embedded WebView.
 
 The app loads HRMIS in `flutter_inappwebview`, injects JavaScript for login and attendance form submission, requests the required device permissions, and shows a small status overlay while the automation is running.
 

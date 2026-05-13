@@ -19,7 +19,7 @@ class AutoAttendApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'HRMIS Auto Attend',
+      title: 'HRMIS Helper',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF246BFD)),
         useMaterial3: true,
