@@ -1,0 +1,40 @@
+# Dart and Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+pubspec.lock.backup
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Android generated files
+android/.gradle/
+android/.kotlin/
+android/build/
+android/local.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# iOS generated files
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+
+# Generated archives and temporary assets
+*.zip
+*.tmp
