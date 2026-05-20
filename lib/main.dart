@@ -7,6 +7,144 @@ import 'package:permission_handler/permission_handler.dart';
 import 'config.dart';
 import 'notification_service.dart';
 
+const _attendanceDescriptionText = 'Bismillah, semangat bekerja!';
+
+const _prepareAttendanceFormJs = '''
+(function () {
+  function findDescriptionField() {
+    const byId = document.getElementById('start_description');
+    if (byId) return byId;
+
+    const byName = document.querySelector(
+      'textarea[name="start_description"], textarea[name*="description" i]'
+    );
+    if (byName) return byName;
+
+    for (const field of document.querySelectorAll('textarea')) {
+      const placeholder = (field.getAttribute('placeholder') || '').toLowerCase();
+      const id = (field.id || '').toLowerCase();
+      const name = (field.name || '').toLowerCase();
+      if (
+        placeholder.includes('ready to work') ||
+        placeholder.includes('description') ||
+        id.includes('description') ||
+        name.includes('description')
+      ) {
+        return field;
+      }
+
+      const labelText = Array.from(field.labels || [])
+        .map((label) => (label.textContent || '').trim())
+        .join(' ');
+      if (/description/i.test(labelText)) return field;
+    }
+
+    for (const label of document.querySelectorAll('label')) {
+      if (!/description/i.test((label.textContent || '').trim())) continue;
+
+      const forId = label.getAttribute('for');
+      if (forId) {
+        const linked = document.getElementById(forId);
+        if (linked) return linked;
+      }
+
+      const container = label.closest(
+        '.form-group, .mb-3, .field, .row, .col, div'
+      );
+      const textarea = container?.querySelector('textarea');
+      if (textarea) return textarea;
+    }
+
+    return null;
+  }
+
+  function selectWfoIfPresent() {
+    const candidates = [
+      document.getElementById('flag_location-WFO'),
+      document.querySelector('[id^="flag_location-"][id*="WFO" i]'),
+      document.querySelector('input[type="radio"][value="WFO"]'),
+      document.querySelector('input[type="radio"][id*="WFO" i]'),
+      document.querySelector('label[for*="WFO" i]'),
+    ].filter(Boolean);
+
+    for (const element of candidates) {
+      element.click();
+      console.log('[AutoAttend] WFO option selected:', element.id || element.value);
+      return true;
+    }
+
+    console.log('[AutoAttend] WFO option not present; continuing without it.');
+    return false;
+  }
+
+  try {
+    const description = findDescriptionField();
+    if (!description) {
+      console.log('[AutoAttend] Description field not found.');
+      return 'missing-description';
+    }
+
+    description.value = '$_attendanceDescriptionText';
+    description.dispatchEvent(new Event('input', { bubbles: true }));
+    description.dispatchEvent(new Event('change', { bubbles: true }));
+
+    selectWfoIfPresent();
+    return 'attendance-prepared';
+  } catch (error) {
+    console.log('[AutoAttend] Attendance preparation failed:', error);
+    return 'attendance-error';
+  }
+})();
+''';
+
+const _submitAttendanceFormJs = '''
+(function () {
+  function findSaveButton() {
+    const byId = document.getElementById('attendance-saveButton');
+    if (byId) return byId;
+
+    const buttons = Array.from(
+      document.querySelectorAll(
+        'button, input[type="submit"], input[type="button"], a.btn, [role="button"]'
+      )
+    );
+
+    return (
+      buttons.find((element) => {
+        const text = (element.textContent || element.value || '')
+          .trim()
+          .toLowerCase();
+        const id = (element.id || '').toLowerCase();
+        return (
+          id.includes('save') ||
+          id.includes('attendance') ||
+          text.includes('save') ||
+          text.includes('submit') ||
+          text.includes('entrance') ||
+          text.includes('check in')
+        );
+      }) || null
+    );
+  }
+
+  try {
+    const saveButton = findSaveButton();
+    if (!saveButton) {
+      console.log('[AutoAttend] Save button not found.');
+      return 'missing-save-button';
+    }
+
+    saveButton.scrollIntoView({ behavior: 'instant', block: 'center' });
+    console.log('[AutoAttend] Clicking attendance save button.');
+    saveButton.click();
+    return 'attendance-save-submitted';
+  } catch (error) {
+    console.log('[AutoAttend] Attendance save failed:', error);
+    return 'attendance-save-error';
+  }
+})();
+''';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Config.load();
@@ -371,35 +509,40 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       return;
     }
 
-    final prepareResult = await _evaluateJavascript('''
-      (function () {
-        try {
-          const description = document.getElementById('start_description');
-          const wfoOption = document.getElementById('flag_location-WFO');
+    String? prepareResult;
+    const maxPrepareAttempts = 5;
 
-          if (!description || !wfoOption) {
-            console.log('[AutoAttend] Attendance elements not found.');
-            return 'missing-attendance-elements';
-          }
+    for (var attempt = 1; attempt <= maxPrepareAttempts; attempt += 1) {
+      if (attempt > 1) {
+        _updateStatus(
+          'Waiting for attendance form ($attempt/$maxPrepareAttempts)...',
+        );
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
 
-          description.value = 'Bismillah, semangat bekerja!';
-          description.dispatchEvent(new Event('input', { bubbles: true }));
-          description.dispatchEvent(new Event('change', { bubbles: true }));
+      if (!mounted) return;
 
-          console.log('[AutoAttend] Selecting WFO location option.');
-          wfoOption.click();
-          return 'attendance-prepared';
-        } catch (error) {
-          console.log('[AutoAttend] Attendance preparation failed:', error);
-          return 'attendance-error';
-        }
-      })();
-    ''');
+      final currentUri = await _currentUri();
+      if (currentUri == null || !_isAttendanceForm(currentUri)) {
+        _attendanceInjectionInProgress = false;
+        _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
+        _updateStatus('Attendance form left before fields were ready.');
+        print('[AutoAttend] Prepare skipped. Current URL: $currentUri');
+        return;
+      }
+
+      prepareResult = await _evaluateJavascript(_prepareAttendanceFormJs);
+      if (prepareResult == 'attendance-prepared') break;
+
+      print(
+        '[AutoAttend] Attendance prepare attempt $attempt result: $prepareResult',
+      );
+    }
 
     if (prepareResult != 'attendance-prepared') {
       _attendanceInjectionInProgress = false;
       _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
-      _updateStatus('Attendance form not ready.');
+      _updateStatus(_prepareFailureStatus(prepareResult));
       print('[AutoAttend] Attendance preparation result: $prepareResult');
       return;
     }
@@ -418,25 +561,18 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     }
 
     _updateStatus('Saving attendance...');
-    final saveResult = await _evaluateJavascript('''
-      (function () {
-        try {
-          const saveButton = document.getElementById('attendance-saveButton');
+    String? saveResult;
+    const maxSaveAttempts = 3;
 
-          if (!saveButton) {
-            console.log('[AutoAttend] Save button not found.');
-            return 'missing-save-button';
-          }
+    for (var attempt = 1; attempt <= maxSaveAttempts; attempt += 1) {
+      if (attempt > 1) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
 
-          console.log('[AutoAttend] Clicking attendance save button.');
-          saveButton.click();
-          return 'attendance-save-submitted';
-        } catch (error) {
-          console.log('[AutoAttend] Attendance save failed:', error);
-          return 'attendance-save-error';
-        }
-      })();
-    ''');
+      saveResult = await _evaluateJavascript(_submitAttendanceFormJs);
+      if (saveResult == 'attendance-save-submitted') break;
+      print('[AutoAttend] Attendance save attempt $attempt result: $saveResult');
+    }
 
     _attendanceInjectionInProgress = false;
     if (saveResult == 'attendance-save-submitted') {
@@ -679,6 +815,15 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
   void _updateStatus(String status) {
     if (!mounted) return;
     setState(() => _status = status);
+  }
+
+  String _prepareFailureStatus(String? result) {
+    return switch (result) {
+      'missing-description' =>
+        'Description field not found. Stay on the attendance form and retry.',
+      'attendance-error' => 'Attendance form preparation failed.',
+      _ => 'Attendance form not ready.',
+    };
   }
 
   @override
