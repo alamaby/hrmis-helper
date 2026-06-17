@@ -15,8 +15,13 @@ const _prepareAttendanceFormJs = '''
     const byId = document.getElementById('start_description');
     if (byId) return byId;
 
-    const byName = document.querySelector(
-      'textarea[name="start_description"], textarea[name*="description" i]'
+    const formField = document.querySelector(
+      '#form-edit-attendance textarea[name="start_description"], #form-edit-attendance textarea'
+    );
+    if (formField) return formField;
+
+    const byName = Array.from(document.querySelectorAll('textarea')).find(
+      (field) => (field.name || '').toLowerCase().includes('description')
     );
     if (byName) return byName;
 
@@ -55,16 +60,29 @@ const _prepareAttendanceFormJs = '''
       if (textarea) return textarea;
     }
 
+    const visibleTextarea = Array.from(document.querySelectorAll('textarea')).find(
+      (field) => field.offsetParent !== null && !field.disabled
+    );
+    if (visibleTextarea) return visibleTextarea;
+
     return null;
   }
 
   function selectWfoIfPresent() {
+    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+    const labels = Array.from(document.querySelectorAll('label'));
     const candidates = [
       document.getElementById('flag_location-WFO'),
-      document.querySelector('[id^="flag_location-"][id*="WFO" i]'),
-      document.querySelector('input[type="radio"][value="WFO"]'),
-      document.querySelector('input[type="radio"][id*="WFO" i]'),
-      document.querySelector('label[for*="WFO" i]'),
+      radios.find((element) => {
+        const id = (element.id || '').toLowerCase();
+        const value = (element.value || '').toLowerCase();
+        return id.includes('wfo') || value.includes('wfo');
+      }),
+      labels.find((element) => {
+        const text = (element.textContent || '').trim().toLowerCase();
+        const forId = (element.getAttribute('for') || '').toLowerCase();
+        return text.includes('work from office') || forId.includes('wfo');
+      }),
     ].filter(Boolean);
 
     for (const element of candidates) {
@@ -121,6 +139,7 @@ const _submitAttendanceFormJs = '''
           text.includes('save') ||
           text.includes('submit') ||
           text.includes('entrance') ||
+          text.includes('clock in') ||
           text.includes('check in')
         );
       }) || null
@@ -571,7 +590,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
       saveResult = await _evaluateJavascript(_submitAttendanceFormJs);
       if (saveResult == 'attendance-save-submitted') break;
-      print('[AutoAttend] Attendance save attempt $attempt result: $saveResult');
+      print(
+          '[AutoAttend] Attendance save attempt $attempt result: $saveResult');
     }
 
     _attendanceInjectionInProgress = false;
@@ -800,8 +820,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
   Future<dynamic> _evaluateJavascript(String source) async {
     try {
-      final result =
+      final rawResult =
           await _webViewController?.evaluateJavascript(source: source);
+      final result = _normalizeJavascriptResult(rawResult);
       print('[AutoAttend] JS result: $result');
       return result;
     } catch (error, stackTrace) {
@@ -809,6 +830,20 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       print(stackTrace);
       _updateStatus('Automation error. Check console logs.');
       return null;
+    }
+  }
+
+  dynamic _normalizeJavascriptResult(dynamic result) {
+    if (result is! String || result.length < 2) return result;
+
+    final trimmed = result.trim();
+    if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return result;
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      return decoded is String ? decoded : result;
+    } catch (_) {
+      return result;
     }
   }
 
