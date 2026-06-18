@@ -1,8 +1,27 @@
+import java.util.regex.Pattern
+
 plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
+
+// Read pubspec.yaml for semantic versioning
+def pubspecFile = file("../../pubspec.yaml")
+def pubspecContent = pubspecFile.text
+
+// App display name (filesystem-friendly)
+def appName = "HRMIS-Helper"
+
+// Extract version (format: major.minor.patch+buildNumber)
+def versionPattern = Pattern.compile(/^version:\s*(.+)$/, Pattern.MULTILINE)
+def versionMatcher = versionPattern.matcher(pubspecContent)
+def fullVersion = versionMatcher.find() ? versionMatcher.group(1).trim() : "1.0.0+1"
+
+// Split version and buildNumber
+def versionParts = fullVersion.split(/\+/)
+def semanticVersion = versionParts[0]
+def buildNumber = versionParts.length > 1 ? versionParts[1] : "1"
 
 android {
     namespace = "com.alamaby.hrmis_helper"
@@ -49,4 +68,11 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
+}
+
+// Rename APK after build
+android.applicationVariants.all { variant ->
+    variant.outputs.all { output ->
+        outputFileName = "${appName}-v${semanticVersion}(${buildNumber})-${variant.buildType.name}.apk"
+    }
 }

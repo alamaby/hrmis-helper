@@ -5,6 +5,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'config.dart';
+import 'credential_screen.dart';
 import 'notification_service.dart';
 
 const _attendanceDescriptionText = 'Bismillah, semangat bekerja!';
@@ -164,6 +165,34 @@ const _submitAttendanceFormJs = '''
 })();
 ''';
 
+const _checkGeolocationReadyJs = '''
+(function () {
+  try {
+    const lat = document.getElementById('latitude');
+    const lng = document.getElementById('longitude');
+    const locList = document.getElementById('location-list');
+
+    const latValue = lat ? parseFloat(lat.value) : NaN;
+    const lngValue = lng ? parseFloat(lng.value) : NaN;
+
+    if (!Number.isFinite(latValue) || !Number.isFinite(lngValue)) {
+      return 'geolocation-missing';
+    }
+    if (latValue === 0 || lngValue === 0) {
+      return 'geolocation-missing';
+    }
+    if (!locList || !locList.value) {
+      return 'location-list-missing';
+    }
+
+    return 'geolocation-ready';
+  } catch (error) {
+    console.log('[AutoAttend] Geolocation check failed:', error);
+    return 'geolocation-check-error';
+  }
+})();
+''';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Config.load();
@@ -237,6 +266,11 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
   void initState() {
     super.initState();
     _checkPermissions();
+    if (!Config.hasCredentials) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openCredentialScreen();
+      });
+    }
   }
 
   Future<void> _checkPermissions() async {
@@ -278,6 +312,18 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
           ? 'Opening HRMIS...'
           : 'Please grant location and camera permissions to continue.';
     });
+  }
+
+  Future<void> _openCredentialScreen() async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const CredentialScreen()),
+    );
+    if (saved == true && mounted) {
+      await Config.load();
+      setState(() {});
+      _runAttendanceAutomation();
+    }
   }
 
   Future<void> _handleLoadStop(WebUri? webUri) async {
@@ -391,7 +437,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
   Future<void> _injectLogin() async {
     if (!Config.hasCredentials) {
       _attendanceTodayStatus = _AttendanceTodayStatus.failed;
-      _updateStatus('Missing HRMIS credentials in .env.');
+      _updateStatus('No HRMIS credentials stored. Open settings to configure.');
       return;
     }
 
@@ -566,16 +612,39 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       return;
     }
 
-    _updateStatus('Waiting for GPS (10s)...');
-    await Future<void>.delayed(const Duration(seconds: 10));
+    _updateStatus('Waiting for GPS...');
+    const maxGeolocationAttempts = 20;
+    String? geolocationResult;
 
-    if (!mounted) return;
-    final currentUri = await _currentUri();
-    if (currentUri == null || !_isAttendanceForm(currentUri)) {
+    for (var attempt = 1; attempt <= maxGeolocationAttempts; attempt += 1) {
+      if (!mounted) return;
+
+      final currentUri = await _currentUri();
+      if (currentUri == null || !_isAttendanceForm(currentUri)) {
+        _attendanceInjectionInProgress = false;
+        _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
+        _updateStatus('Attendance save skipped: not on form page.');
+        print('[AutoAttend] Save skipped. Current URL: $currentUri');
+        return;
+      }
+
+      geolocationResult = await _evaluateJavascript(_checkGeolocationReadyJs);
+      if (geolocationResult == 'geolocation-ready') break;
+
+      print(
+        '[AutoAttend] Geolocation attempt $attempt result: $geolocationResult',
+      );
+      _updateStatus(
+        'Waiting for GPS ($attempt/$maxGeolocationAttempts)...',
+      );
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+
+    if (geolocationResult != 'geolocation-ready') {
       _attendanceInjectionInProgress = false;
       _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
-      _updateStatus('Attendance save skipped: not on form page.');
-      print('[AutoAttend] Save skipped. Current URL: $currentUri');
+      _updateStatus(_geolocationFailureStatus(geolocationResult));
+      print('[AutoAttend] Geolocation not ready: $geolocationResult');
       return;
     }
 
@@ -597,8 +666,47 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     _attendanceInjectionInProgress = false;
     if (saveResult == 'attendance-save-submitted') {
       _attendanceInjected = true;
-      _attendanceTodayStatus = _AttendanceTodayStatus.recorded;
-      _updateStatus('Attendance save submitted.');
+      _updateStatus('Attendance submitted. Verifying...');
+
+      await Future<void>.delayed(const Duration(seconds: 5));
+
+      if (!mounted) return;
+
+      await _webViewController?.loadUrl(
+        urlRequest: URLRequest(url: WebUri(_formUri.toString())),
+      );
+
+      await Future<void>.delayed(const Duration(seconds: 3));
+
+      if (!mounted) return;
+
+      final verifyResult = await _evaluateJavascript('''
+        (function () {
+          try {
+            const messages = Array.from(
+              document.querySelectorAll('.alert, .message, .success, .error, [role="alert"]')
+            );
+            for (const el of messages) {
+              const text = (el.textContent || '').toLowerCase();
+              if (text.includes('sudah') || text.includes('already') || text.includes('tercatat') || text.includes('recorded')) {
+                return 'attendance-already-recorded';
+              }
+            }
+            return 'attendance-not-recorded';
+          } catch (error) {
+            return 'verify-error';
+          }
+        })();
+      ''');
+
+      if (verifyResult == 'attendance-already-recorded') {
+        _attendanceTodayStatus = _AttendanceTodayStatus.recorded;
+        _updateStatus('Attendance verified as recorded.');
+      } else {
+        _attendanceTodayStatus = _AttendanceTodayStatus.recorded;
+        _updateStatus('Attendance submitted (verification inconclusive).');
+      }
+
       await _navigateToHomeForInspection();
     } else {
       _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
@@ -861,6 +969,18 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     };
   }
 
+  String _geolocationFailureStatus(String? result) {
+    return switch (result) {
+      'geolocation-missing' =>
+        'GPS position not detected. Enable device location and retry.',
+      'location-list-missing' =>
+        'Location list not loaded. Check connection and retry.',
+      'geolocation-check-error' =>
+        'Geolocation check failed. Reload the form and retry.',
+      _ => 'Form not ready for submission.',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -885,6 +1005,11 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
             _buildAutomationView(),
           ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openCredentialScreen,
+        tooltip: 'Settings',
+        child: const Icon(Icons.settings),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTabIndex,
