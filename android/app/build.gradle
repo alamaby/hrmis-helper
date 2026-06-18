@@ -1,3 +1,6 @@
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.util.regex.Pattern
 
 plugins {
@@ -70,13 +73,14 @@ dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
 }
 
-// Rename APK outputs in build/app/outputs/flutter-apk/ after Flutter copies them.
-// Flutter copies the original app-*.apk into flutter-apk/ after gradle's
-// own output is produced, so renaming happens in a post-build task below.
+// Copy APK outputs in build/app/outputs/flutter-apk/ to a versioned filename
+// after Flutter copies them. Flutter checks for the original app-*.apk
+// filename once gradle finishes, so we keep that file and create a renamed
+// copy alongside it instead of renaming in place.
 afterEvaluate {
     def renameTask = tasks.register('renameFlutterApks') {
         group = 'flutter'
-        description = 'Rename APK files in build/app/outputs/flutter-apk/ with app name and version from pubspec.yaml.'
+        description = 'Copy APK files in build/app/outputs/flutter-apk/ with app name and version from pubspec.yaml.'
         doLast {
             def apkDir = file("${project.buildDir}/outputs/flutter-apk")
             if (!apkDir.exists()) {
@@ -93,7 +97,7 @@ afterEvaluate {
             def alreadyRenamedPrefix = "${appName}-v"
             def appPrefixPattern = ~/^app-/
 
-            int renamedCount = 0
+            int copiedCount = 0
             allFiles.each { apkFile ->
                 def originalName = apkFile.name
                 if (!(originalName.endsWith('.apk') && !originalName.endsWith('.apk.sha1'))) {
@@ -110,15 +114,20 @@ afterEvaluate {
                 )
                 def target = new File(apkDir, renamed)
 
-                if (apkFile.renameTo(target)) {
+                try {
+                    Files.copy(
+                        Paths.get(apkFile.toURI()),
+                        Paths.get(target.toURI()),
+                        StandardCopyOption.REPLACE_EXISTING
+                    )
                     println "[APK Rename] ${originalName} -> ${renamed}"
-                    renamedCount += 1
-                } else {
-                    println "[APK Rename] Failed to rename: ${originalName}"
+                    copiedCount += 1
+                } catch (Exception copyError) {
+                    println "[APK Rename] Failed to copy: ${originalName} (${copyError.message})"
                 }
             }
 
-            if (renamedCount == 0) {
+            if (copiedCount == 0) {
                 println "[APK Rename] No APK files needed renaming"
             }
         }
