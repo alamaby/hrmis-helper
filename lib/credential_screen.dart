@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'config.dart';
+import 'about_screen.dart';
 
 class CredentialScreen extends StatefulWidget {
   const CredentialScreen({super.key});
@@ -56,7 +57,8 @@ class _CredentialScreenState extends State<CredentialScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear Credentials'),
-        content: const Text('Are you sure you want to remove stored credentials?'),
+        content:
+            const Text('Are you sure you want to remove stored credentials?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -98,7 +100,8 @@ class _CredentialScreenState extends State<CredentialScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.lock_outline, size: 64, color: Color(0xFF246BFD)),
+              const Icon(Icons.lock_outline,
+                  size: 64, color: Color(0xFF246BFD)),
               const SizedBox(height: 16),
               Text(
                 'Enter your HRMIS login details',
@@ -130,7 +133,9 @@ class _CredentialScreenState extends State<CredentialScreen> {
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
                     onPressed: () {
                       setState(() => _obscurePassword = !_obscurePassword);
@@ -145,6 +150,73 @@ class _CredentialScreenState extends State<CredentialScreen> {
                 },
               ),
               const SizedBox(height: 24),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AboutScreen()),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.info_outline_rounded,
+                          color: Color(0xFF2563EB),
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'About this app',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'View app name and version',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: const Color(0xFF64748B),
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: _isSaving ? null : _saveCredentials,
                 icon: _isSaving

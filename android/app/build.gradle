@@ -70,9 +70,60 @@ dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
 }
 
-// Rename APK after build
-android.applicationVariants.all { variant ->
-    variant.outputs.all { output ->
-        outputFileName = "${appName}-v${semanticVersion}(${buildNumber})-${variant.buildType.name}.apk"
+// Rename APK outputs in build/app/outputs/flutter-apk/ after Flutter copies them.
+// Flutter copies the original app-*.apk into flutter-apk/ after gradle's
+// own output is produced, so renaming happens in a post-build task below.
+afterEvaluate {
+    def renameTask = tasks.register('renameFlutterApks') {
+        group = 'flutter'
+        description = 'Rename APK files in build/app/outputs/flutter-apk/ with app name and version from pubspec.yaml.'
+        doLast {
+            def apkDir = file("${project.buildDir}/outputs/flutter-apk")
+            if (!apkDir.exists()) {
+                println "[APK Rename] Directory not found: ${apkDir}"
+                return
+            }
+
+            def apkFiles = apkDir.listFiles({ d, n ->
+                n.endsWith('.apk') && !n.endsWith('.apk.sha1')
+            } as FileFilter)
+
+            if (apkFiles == null || apkFiles.length == 0) {
+                println "[APK Rename] No APK files found in ${apkDir}"
+                return
+            }
+
+            def alreadyRenamedPrefix = "${appName}-v"
+            def appPrefixPattern = ~/^app-/
+
+            apkFiles.each { apkFile ->
+                def originalName = apkFile.name
+                if (originalName.startsWith(alreadyRenamedPrefix)) {
+                    println "[APK Rename] Already renamed, skipping: ${originalName}"
+                    return
+                }
+
+                def renamed = originalName.replaceFirst(
+                    appPrefixPattern,
+                    "${appName}-v${semanticVersion}(${buildNumber})-"
+                )
+                def target = new File(apkDir, renamed)
+
+                if (apkFile.renameTo(target)) {
+                    println "[APK Rename] ${originalName} -> ${renamed}"
+                } else {
+                    println "[APK Rename] Failed to rename: ${originalName}"
+                }
+            }
+        }
+    }
+
+    // Trigger rename after any assemble variant or top-level build task.
+    tasks.matching {
+        it.name == 'assemble' ||
+            it.name == 'build' ||
+            (it.name.startsWith('assemble') && it.name != 'assemble')
+    }.configureEach {
+        finalizedBy renameTask
     }
 }
