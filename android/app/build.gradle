@@ -84,20 +84,21 @@ afterEvaluate {
                 return
             }
 
-            def apkFiles = apkDir.listFiles({ d, n ->
-                n.endsWith('.apk') && !n.endsWith('.apk.sha1')
-            } as FileFilter)
-
-            if (apkFiles == null || apkFiles.length == 0) {
-                println "[APK Rename] No APK files found in ${apkDir}"
+            def allFiles = apkDir.listFiles()
+            if (allFiles == null || allFiles.length == 0) {
+                println "[APK Rename] No files found in ${apkDir}"
                 return
             }
 
             def alreadyRenamedPrefix = "${appName}-v"
             def appPrefixPattern = ~/^app-/
 
-            apkFiles.each { apkFile ->
+            int renamedCount = 0
+            allFiles.each { apkFile ->
                 def originalName = apkFile.name
+                if (!(originalName.endsWith('.apk') && !originalName.endsWith('.apk.sha1'))) {
+                    return
+                }
                 if (originalName.startsWith(alreadyRenamedPrefix)) {
                     println "[APK Rename] Already renamed, skipping: ${originalName}"
                     return
@@ -111,9 +112,14 @@ afterEvaluate {
 
                 if (apkFile.renameTo(target)) {
                     println "[APK Rename] ${originalName} -> ${renamed}"
+                    renamedCount += 1
                 } else {
                     println "[APK Rename] Failed to rename: ${originalName}"
                 }
+            }
+
+            if (renamedCount == 0) {
+                println "[APK Rename] No APK files needed renaming"
             }
         }
     }
