@@ -40,3 +40,14 @@ ios/.symlinks/
 # Generated archives and temporary assets
 *.zip
 *.tmp
+
+# Agent/local working files
+.mimocode/
+.memory/
+PROJECT_MEMORY.md
+system_prompt.md
+view_source_hrmis/
+
+# Unused design drafts
+assets/images/mai-image-*
+assets/images/qwen-image-*
