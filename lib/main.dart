@@ -5,7 +5,13 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'config.dart';
+import 'core/app_logger.dart';
+import 'core/attendance_summary.dart';
+import 'core/hrmis_uri.dart';
+import 'core/javascript_result.dart';
+import 'core/status_messages.dart';
 import 'credential_screen.dart';
+import 'dashboard_view.dart';
 import 'notification_service.dart';
 
 const _attendanceDescriptionText = 'Bismillah, semangat bekerja!';
@@ -231,13 +237,11 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     'https://hrmis.neuron.id/attendance/dashboard/form',
   );
   static final Uri _homeUri = Uri.parse('https://hrmis.neuron.id/doornew');
-  static const String _formPath = '/attendance/dashboard/form';
 
   InAppWebViewController? _webViewController;
   int _selectedTabIndex = 0;
   String _status = 'Checking permissions...';
-  _AttendanceTodayStatus _attendanceTodayStatus =
-      _AttendanceTodayStatus.checking;
+  AttendanceTodayStatus _attendanceTodayStatus = AttendanceTodayStatus.checking;
   int _lateMinutes = 0;
   int _absenceDays = 0;
   bool _hasRequiredPermissions = false;
@@ -333,9 +337,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     if (uri == null) return;
 
     final url = uri.toString();
-    print('[WebView] Load stopped: $url');
+    log('[WebView] Load stopped: $url');
 
-    if (_isHomeInspectionPage(uri) &&
+    if (HrmisUri.isHomeInspectionPage(uri) &&
         _homeInspectionRequested &&
         !_homeInspectionInProgress &&
         !_homeInspectionCompleted) {
@@ -343,56 +347,34 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       return;
     }
 
-    if (_isLoginPage(uri) && !_loginInjected && !_loginInjectionInProgress) {
+    if (HrmisUri.isLoginPage(uri) &&
+        !_loginInjected &&
+        !_loginInjectionInProgress) {
       await _injectLogin();
       return;
     }
 
-    if (_isAttendanceForm(uri) &&
+    if (HrmisUri.isAttendanceForm(uri) &&
         !_attendanceInjected &&
         !_attendanceInjectionInProgress) {
       await _injectAttendanceForm();
       return;
     }
 
-    if (_shouldNavigateToAttendanceForm(uri)) {
+    if (HrmisUri.shouldNavigateToAttendanceForm(
+      uri,
+      loginInjected: _loginInjected,
+      formNavigationTriggered: _formNavigationTriggered,
+      attendanceInjected: _attendanceInjected,
+    )) {
       await _navigateToAttendanceForm(uri);
     }
-  }
-
-  bool _isLoginPage(Uri uri) {
-    return uri.scheme == 'https' &&
-        uri.host == 'hrmis.neuron.id' &&
-        uri.path == '/doornew';
-  }
-
-  bool _isHomeInspectionPage(Uri uri) => _isLoginPage(uri);
-
-  bool _isAttendanceForm(Uri uri) {
-    return uri.scheme == 'https' &&
-        uri.host == 'hrmis.neuron.id' &&
-        uri.path == _formPath;
-  }
-
-  bool _isHrmisPage(Uri uri) {
-    return uri.scheme == 'https' && uri.host == 'hrmis.neuron.id';
-  }
-
-  bool _shouldNavigateToAttendanceForm(Uri uri) {
-    if (!_isHrmisPage(uri)) return false;
-    if (_isAttendanceForm(uri)) return false;
-    if (_formNavigationTriggered || _attendanceInjected) return false;
-
-    // After a successful login HRMIS can land on a home/dashboard page first.
-    // Send the WebView directly to the known attendance form route.
-    return _loginInjected &&
-        (uri.path == '/' || uri.path.contains('dashboard'));
   }
 
   Future<void> _navigateToAttendanceForm(Uri currentUri) async {
     _formNavigationTriggered = true;
     _updateStatus('Opening attendance form...');
-    print('[AutoAttend] Redirecting from $currentUri to $_formUri');
+    log('[AutoAttend] Redirecting from $currentUri to $_formUri');
 
     await _webViewController?.loadUrl(
       urlRequest: URLRequest(url: WebUri(_formUri.toString())),
@@ -408,7 +390,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     _homeInspectionRequested = false;
     _homeInspectionInProgress = false;
     _homeInspectionCompleted = false;
-    _attendanceTodayStatus = _AttendanceTodayStatus.checking;
+    _attendanceTodayStatus = AttendanceTodayStatus.checking;
 
     setState(() {
       _selectedTabIndex = 1;
@@ -436,7 +418,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
   Future<void> _injectLogin() async {
     if (!Config.hasCredentials) {
-      _attendanceTodayStatus = _AttendanceTodayStatus.failed;
+      _attendanceTodayStatus = AttendanceTodayStatus.failed;
       _updateStatus('No HRMIS credentials stored. Open settings to configure.');
       return;
     }
@@ -457,9 +439,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     await Future<void>.delayed(const Duration(seconds: 15));
 
     final currentUri = await _currentUri();
-    if (currentUri == null || !_isLoginPage(currentUri)) {
+    if (currentUri == null || !HrmisUri.isLoginPage(currentUri)) {
       _loginInjectionInProgress = false;
-      print('[AutoAttend] Login injection skipped. Current URL: $currentUri');
+      log('[AutoAttend] Login injection skipped. Current URL: $currentUri');
       return;
     }
 
@@ -520,14 +502,14 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
         break;
       }
 
-      print('[AutoAttend] Login attempt $attempt result: $result');
+      log('[AutoAttend] Login attempt $attempt result: $result');
       await Future<void>.delayed(const Duration(seconds: 1));
     }
 
     _loginInjectionInProgress = false;
 
     if (!_loginInjected && mounted) {
-      _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
+      _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
       _updateStatus('Login fields not ready. Reloading login page...');
       await _webViewController?.loadUrl(
         urlRequest: URLRequest(url: WebUri(_loginUri.toString())),
@@ -568,7 +550,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     if (recordedResult == 'attendance-already-recorded') {
       _attendanceInjected = true;
       _attendanceInjectionInProgress = false;
-      _attendanceTodayStatus = _AttendanceTodayStatus.recorded;
+      _attendanceTodayStatus = AttendanceTodayStatus.recorded;
       _updateStatus('Attendance already recorded.');
       await _navigateToHomeForInspection();
       return;
@@ -588,27 +570,27 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       if (!mounted) return;
 
       final currentUri = await _currentUri();
-      if (currentUri == null || !_isAttendanceForm(currentUri)) {
+      if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
         _attendanceInjectionInProgress = false;
-        _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
+        _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
         _updateStatus('Attendance form left before fields were ready.');
-        print('[AutoAttend] Prepare skipped. Current URL: $currentUri');
+        log('[AutoAttend] Prepare skipped. Current URL: $currentUri');
         return;
       }
 
       prepareResult = await _evaluateJavascript(_prepareAttendanceFormJs);
       if (prepareResult == 'attendance-prepared') break;
 
-      print(
+      log(
         '[AutoAttend] Attendance prepare attempt $attempt result: $prepareResult',
       );
     }
 
     if (prepareResult != 'attendance-prepared') {
       _attendanceInjectionInProgress = false;
-      _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
-      _updateStatus(_prepareFailureStatus(prepareResult));
-      print('[AutoAttend] Attendance preparation result: $prepareResult');
+      _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+      _updateStatus(prepareFailureStatus(prepareResult));
+      log('[AutoAttend] Attendance preparation result: $prepareResult');
       return;
     }
 
@@ -620,18 +602,18 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       if (!mounted) return;
 
       final currentUri = await _currentUri();
-      if (currentUri == null || !_isAttendanceForm(currentUri)) {
+      if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
         _attendanceInjectionInProgress = false;
-        _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
+        _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
         _updateStatus('Attendance save skipped: not on form page.');
-        print('[AutoAttend] Save skipped. Current URL: $currentUri');
+        log('[AutoAttend] Save skipped. Current URL: $currentUri');
         return;
       }
 
       geolocationResult = await _evaluateJavascript(_checkGeolocationReadyJs);
       if (geolocationResult == 'geolocation-ready') break;
 
-      print(
+      log(
         '[AutoAttend] Geolocation attempt $attempt result: $geolocationResult',
       );
       _updateStatus(
@@ -642,9 +624,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
     if (geolocationResult != 'geolocation-ready') {
       _attendanceInjectionInProgress = false;
-      _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
-      _updateStatus(_geolocationFailureStatus(geolocationResult));
-      print('[AutoAttend] Geolocation not ready: $geolocationResult');
+      _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+      _updateStatus(geolocationFailureStatus(geolocationResult));
+      log('[AutoAttend] Geolocation not ready: $geolocationResult');
       return;
     }
 
@@ -659,8 +641,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
       saveResult = await _evaluateJavascript(_submitAttendanceFormJs);
       if (saveResult == 'attendance-save-submitted') break;
-      print(
-          '[AutoAttend] Attendance save attempt $attempt result: $saveResult');
+      log('[AutoAttend] Attendance save attempt $attempt result: $saveResult');
     }
 
     _attendanceInjectionInProgress = false;
@@ -700,18 +681,18 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       ''');
 
       if (verifyResult == 'attendance-already-recorded') {
-        _attendanceTodayStatus = _AttendanceTodayStatus.recorded;
+        _attendanceTodayStatus = AttendanceTodayStatus.recorded;
         _updateStatus('Attendance verified as recorded.');
       } else {
-        _attendanceTodayStatus = _AttendanceTodayStatus.recorded;
+        _attendanceTodayStatus = AttendanceTodayStatus.recorded;
         _updateStatus('Attendance submitted (verification inconclusive).');
       }
 
       await _navigateToHomeForInspection();
     } else {
-      _attendanceTodayStatus = _AttendanceTodayStatus.notRecorded;
+      _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
       _updateStatus('Attendance save not submitted.');
-      print('[AutoAttend] Attendance save result: $saveResult');
+      log('[AutoAttend] Attendance save result: $saveResult');
     }
   }
 
@@ -836,11 +817,11 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     _homeInspectionInProgress = false;
     _homeInspectionCompleted = true;
 
-    final summary = _parseAttendanceSummary(result);
+    final summary = parseAttendanceSummary(result);
     if (summary == null) {
       _selectedTabIndex = 0;
       _updateStatus('HRMIS summary check failed.');
-      print('[AutoAttend] Invalid summary result: $result');
+      log('[AutoAttend] Invalid summary result: $result');
       return;
     }
 
@@ -860,29 +841,6 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     }
 
     _updateStatus('HRMIS summary is clear.');
-  }
-
-  _AttendanceSummary? _parseAttendanceSummary(dynamic result) {
-    try {
-      dynamic decoded = result;
-
-      if (decoded is String) {
-        decoded = jsonDecode(decoded);
-        if (decoded is String) {
-          decoded = jsonDecode(decoded);
-        }
-      }
-
-      if (decoded is! Map<String, dynamic>) return null;
-
-      return _AttendanceSummary(
-        lateMinutes: (decoded['lateMinutes'] as num?)?.toInt() ?? 0,
-        absenceDays: (decoded['absenceDays'] as num?)?.toInt() ?? 0,
-      );
-    } catch (error) {
-      print('[AutoAttend] Summary parse failed: $error');
-      return null;
-    }
   }
 
   Future<Uri?> _currentUri() async {
@@ -930,55 +888,20 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     try {
       final rawResult =
           await _webViewController?.evaluateJavascript(source: source);
-      final result = _normalizeJavascriptResult(rawResult);
-      print('[AutoAttend] JS result: $result');
+      final result = normalizeJavascriptResult(rawResult);
+      log('[AutoAttend] JS result: $result');
       return result;
     } catch (error, stackTrace) {
-      print('[AutoAttend] JS evaluation error: $error');
-      print(stackTrace);
+      log('[AutoAttend] JS evaluation error: $error');
+      log('$stackTrace');
       _updateStatus('Automation error. Check console logs.');
       return null;
-    }
-  }
-
-  dynamic _normalizeJavascriptResult(dynamic result) {
-    if (result is! String || result.length < 2) return result;
-
-    final trimmed = result.trim();
-    if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return result;
-
-    try {
-      final decoded = jsonDecode(trimmed);
-      return decoded is String ? decoded : result;
-    } catch (_) {
-      return result;
     }
   }
 
   void _updateStatus(String status) {
     if (!mounted) return;
     setState(() => _status = status);
-  }
-
-  String _prepareFailureStatus(String? result) {
-    return switch (result) {
-      'missing-description' =>
-        'Description field not found. Stay on the attendance form and retry.',
-      'attendance-error' => 'Attendance form preparation failed.',
-      _ => 'Attendance form not ready.',
-    };
-  }
-
-  String _geolocationFailureStatus(String? result) {
-    return switch (result) {
-      'geolocation-missing' =>
-        'GPS position not detected. Enable device location and retry.',
-      'location-list-missing' =>
-        'Location list not loaded. Check connection and retry.',
-      'geolocation-check-error' =>
-        'Geolocation check failed. Reload the form and retry.',
-      _ => 'Form not ready for submission.',
-    };
   }
 
   @override
@@ -989,7 +912,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
         child: IndexedStack(
           index: _selectedTabIndex,
           children: [
-            _DashboardView(
+            DashboardView(
               attendanceStatus: _attendanceTodayStatus,
               automationStatus: _status,
               lateMinutes: _lateMinutes,
@@ -1054,7 +977,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
                   onUpdateVisitedHistory: (_, uri, androidIsReload) =>
                       _handleLoadStop(uri),
                   onConsoleMessage: (_, consoleMessage) {
-                    print(
+                    log(
                       '[WebView console:${consoleMessage.messageLevel}] '
                       '${consoleMessage.message}',
                     );
@@ -1073,7 +996,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
                     );
                   },
                   onReceivedError: (_, request, error) {
-                    print(
+                    log(
                       '[WebView] Error ${error.type}: ${error.description} '
                       'for ${request.url}',
                     );
@@ -1093,494 +1016,6 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       ],
     );
   }
-}
-
-enum _AttendanceTodayStatus {
-  checking,
-  recorded,
-  notRecorded,
-  failed,
-}
-
-class _DashboardView extends StatelessWidget {
-  const _DashboardView({
-    required this.attendanceStatus,
-    required this.automationStatus,
-    required this.lateMinutes,
-    required this.absenceDays,
-    required this.hasRequiredPermissions,
-    required this.isRequestingPermissions,
-    required this.onRunAttendance,
-    required this.onRequestPermissions,
-    required this.onOpenAutomation,
-  });
-
-  final _AttendanceTodayStatus attendanceStatus;
-  final String automationStatus;
-  final int lateMinutes;
-  final int absenceDays;
-  final bool hasRequiredPermissions;
-  final bool isRequestingPermissions;
-  final VoidCallback onRunAttendance;
-  final VoidCallback onRequestPermissions;
-  final VoidCallback onOpenAutomation;
-
-  bool get _hasWarning => lateMinutes > 0 || absenceDays > 0;
-  bool get _canRunAttendance =>
-      hasRequiredPermissions &&
-      attendanceStatus != _AttendanceTodayStatus.recorded;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-      children: [
-        _DashboardHeader(
-          attendanceStatus: attendanceStatus,
-          hasWarning: _hasWarning,
-        ),
-        const SizedBox(height: 16),
-        _ActionPanel(
-          attendanceStatus: attendanceStatus,
-          automationStatus: automationStatus,
-          hasRequiredPermissions: hasRequiredPermissions,
-          isRequestingPermissions: isRequestingPermissions,
-          canRunAttendance: _canRunAttendance,
-          onRunAttendance: onRunAttendance,
-          onRequestPermissions: onRequestPermissions,
-          onOpenAutomation: onOpenAutomation,
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCard(
-                icon: Icons.schedule,
-                title: 'Delay',
-                value: lateMinutes.toString(),
-                unit: 'minutes',
-                color: const Color(0xFFB45309),
-                backgroundColor: const Color(0xFFFFF7ED),
-                isWarning: lateMinutes > 0,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _MetricCard(
-                icon: Icons.event_busy_outlined,
-                title: 'Absence',
-                value: absenceDays.toString(),
-                unit: 'days',
-                color: const Color(0xFFB91C1C),
-                backgroundColor: const Color(0xFFFEF2F2),
-                isWarning: absenceDays > 0,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _StatusTimeline(
-          attendanceStatus: attendanceStatus,
-          lateMinutes: lateMinutes,
-          absenceDays: absenceDays,
-        ),
-      ],
-    );
-  }
-}
-
-class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader({
-    required this.attendanceStatus,
-    required this.hasWarning,
-  });
-
-  final _AttendanceTodayStatus attendanceStatus;
-  final bool hasWarning;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final titleStyle = Theme.of(context).textTheme.headlineSmall?.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          height: 1.05,
-        );
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF102A43),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.verified_user_outlined,
-                  color: Colors.white,
-                ),
-              ),
-              const Spacer(),
-              _StatusPill(
-                text: _statusText(attendanceStatus),
-                foregroundColor: _statusColor(attendanceStatus),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Text('HRMIS Helper', style: titleStyle),
-          const SizedBox(height: 6),
-          Text(
-            hasWarning
-                ? 'There are attendance items that need your attention.'
-                : 'Attendance automation and HRMIS checks are ready.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.surface,
-                  height: 1.35,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _statusText(_AttendanceTodayStatus status) {
-    return switch (status) {
-      _AttendanceTodayStatus.checking => 'Checking',
-      _AttendanceTodayStatus.recorded => 'Recorded',
-      _AttendanceTodayStatus.notRecorded => 'Not recorded',
-      _AttendanceTodayStatus.failed => 'Needs action',
-    };
-  }
-
-  static Color _statusColor(_AttendanceTodayStatus status) {
-    return switch (status) {
-      _AttendanceTodayStatus.checking => const Color(0xFF2563EB),
-      _AttendanceTodayStatus.recorded => const Color(0xFF047857),
-      _AttendanceTodayStatus.notRecorded => const Color(0xFFB45309),
-      _AttendanceTodayStatus.failed => const Color(0xFFB91C1C),
-    };
-  }
-}
-
-class _ActionPanel extends StatelessWidget {
-  const _ActionPanel({
-    required this.attendanceStatus,
-    required this.automationStatus,
-    required this.hasRequiredPermissions,
-    required this.isRequestingPermissions,
-    required this.canRunAttendance,
-    required this.onRunAttendance,
-    required this.onRequestPermissions,
-    required this.onOpenAutomation,
-  });
-
-  final _AttendanceTodayStatus attendanceStatus;
-  final String automationStatus;
-  final bool hasRequiredPermissions;
-  final bool isRequestingPermissions;
-  final bool canRunAttendance;
-  final VoidCallback onRunAttendance;
-  final VoidCallback onRequestPermissions;
-  final VoidCallback onOpenAutomation;
-
-  @override
-  Widget build(BuildContext context) {
-    final message = switch (attendanceStatus) {
-      _AttendanceTodayStatus.recorded =>
-        'Attendance has been recorded for today.',
-      _AttendanceTodayStatus.notRecorded =>
-        'Attendance is not confirmed yet. Run the automation again.',
-      _AttendanceTodayStatus.failed =>
-        'Automation needs attention before it can continue.',
-      _AttendanceTodayStatus.checking => 'Automation is checking HRMIS.',
-    };
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.task_alt, color: Color(0xFF0F766E)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            automationStatus,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF64748B),
-                ),
-          ),
-          const SizedBox(height: 16),
-          if (!hasRequiredPermissions)
-            FilledButton.icon(
-              onPressed: isRequestingPermissions ? null : onRequestPermissions,
-              icon: const Icon(Icons.verified_user_outlined),
-              label: Text(
-                isRequestingPermissions
-                    ? 'Requesting permissions'
-                    : 'Grant permissions',
-              ),
-            )
-          else if (canRunAttendance)
-            FilledButton.icon(
-              onPressed: onRunAttendance,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: const Text('Run attendance'),
-            )
-          else
-            OutlinedButton.icon(
-              onPressed: onOpenAutomation,
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('Open automation view'),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.unit,
-    required this.color,
-    required this.backgroundColor,
-    required this.isWarning,
-  });
-
-  final IconData icon;
-  final String title;
-  final String value;
-  final String unit;
-  final Color color;
-  final Color backgroundColor;
-  final bool isWarning;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 156,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isWarning
-                ? color.withValues(alpha: 0.38)
-                : const Color(0xFFE5E7EB),
-          ),
-        ),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: color),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF111827),
-                    height: 1,
-                  ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '$title ($unit)',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
-                    height: 1.25,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusTimeline extends StatelessWidget {
-  const _StatusTimeline({
-    required this.attendanceStatus,
-    required this.lateMinutes,
-    required this.absenceDays,
-  });
-
-  final _AttendanceTodayStatus attendanceStatus;
-  final int lateMinutes;
-  final int absenceDays;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Today at a Glance',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: 12),
-          _TimelineRow(
-            icon: Icons.login_rounded,
-            title: 'Attendance status',
-            value: switch (attendanceStatus) {
-              _AttendanceTodayStatus.recorded => 'Recorded',
-              _AttendanceTodayStatus.notRecorded => 'Not confirmed',
-              _AttendanceTodayStatus.failed => 'Needs attention',
-              _AttendanceTodayStatus.checking => 'Checking',
-            },
-          ),
-          const Divider(height: 22),
-          _TimelineRow(
-            icon: Icons.notifications_active_outlined,
-            title: 'Notification rule',
-            value: lateMinutes > 0 || absenceDays > 0
-                ? 'Warning sent when checks completed'
-                : 'No warning required',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TimelineRow extends StatelessWidget {
-  const _TimelineRow({
-    required this.icon,
-    required this.title,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String title;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF6FF),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: const Color(0xFF2563EB), size: 20),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF64748B),
-                    ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({
-    required this.text,
-    required this.foregroundColor,
-  });
-
-  final String text;
-  final Color foregroundColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: foregroundColor.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: foregroundColor.withValues(alpha: 0.36)),
-      ),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-      ),
-    );
-  }
-}
-
-class _AttendanceSummary {
-  const _AttendanceSummary({
-    required this.lateMinutes,
-    required this.absenceDays,
-  });
-
-  final int lateMinutes;
-  final int absenceDays;
-
-  bool get hasWarning => lateMinutes > 0 || absenceDays > 0;
 }
 
 class _StatusOverlay extends StatelessWidget {

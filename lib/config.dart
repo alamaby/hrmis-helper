@@ -1,5 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'core/app_logger.dart';
+
 class Config {
   const Config._();
 
@@ -16,14 +18,15 @@ class Config {
   static String get username => _username;
   static String get password => _password;
 
-  static bool get hasCredentials => _username.isNotEmpty && _password.isNotEmpty;
+  static bool get hasCredentials =>
+      _username.isNotEmpty && _password.isNotEmpty;
 
   static Future<void> load() async {
     try {
       _username = (await _storage.read(key: _usernameKey)) ?? '';
       _password = (await _storage.read(key: _passwordKey)) ?? '';
     } catch (error) {
-      print('[Config] Failed to load credentials: $error');
+      log('[Config] Failed to load credentials: $error');
     }
   }
 
@@ -37,7 +40,7 @@ class Config {
       _password = trimmedPassword;
       return true;
     } catch (error) {
-      print('[Config] Failed to save credentials: $error');
+      log('[Config] Failed to save credentials: $error');
       return false;
     }
   }
@@ -48,7 +51,7 @@ class Config {
       _username = '';
       _password = '';
     } catch (error) {
-      print('[Config] Failed to clear credentials: $error');
+      log('[Config] Failed to clear credentials: $error');
     }
   }
 }
