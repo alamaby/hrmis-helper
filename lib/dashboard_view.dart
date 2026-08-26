@@ -19,6 +19,7 @@ class DashboardView extends StatelessWidget {
     required this.onRunAttendance,
     required this.onRequestPermissions,
     required this.onOpenAutomation,
+    this.selectedTypeLabel,
   });
 
   final AttendanceTodayStatus attendanceStatus;
@@ -30,6 +31,10 @@ class DashboardView extends StatelessWidget {
   final VoidCallback onRunAttendance;
   final VoidCallback onRequestPermissions;
   final VoidCallback onOpenAutomation;
+
+  /// Label of the most recently selected attendance type (WFO/WFH/SPJ),
+  /// shown on the action panel so the user can confirm before running.
+  final String? selectedTypeLabel;
 
   bool get _hasWarning => lateMinutes > 0 || absenceDays > 0;
 
@@ -53,6 +58,7 @@ class DashboardView extends StatelessWidget {
           hasRequiredPermissions: hasRequiredPermissions,
           isRequestingPermissions: isRequestingPermissions,
           canRunAttendance: _canRunAttendance,
+          selectedTypeLabel: selectedTypeLabel,
           onRunAttendance: onRunAttendance,
           onRequestPermissions: onRequestPermissions,
           onOpenAutomation: onOpenAutomation,
@@ -192,6 +198,7 @@ class ActionPanel extends StatelessWidget {
     required this.onRunAttendance,
     required this.onRequestPermissions,
     required this.onOpenAutomation,
+    this.selectedTypeLabel,
   });
 
   final AttendanceTodayStatus attendanceStatus;
@@ -199,6 +206,7 @@ class ActionPanel extends StatelessWidget {
   final bool hasRequiredPermissions;
   final bool isRequestingPermissions;
   final bool canRunAttendance;
+  final String? selectedTypeLabel;
   final VoidCallback onRunAttendance;
   final VoidCallback onRequestPermissions;
   final VoidCallback onOpenAutomation;
@@ -247,6 +255,15 @@ class ActionPanel extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 16),
+          if (canRunAttendance && selectedTypeLabel != null) ...[
+            Text(
+              'Last attendance type: ${selectedTypeLabel!}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (!hasRequiredPermissions)
             FilledButton.icon(
               onPressed: isRequestingPermissions ? null : onRequestPermissions,

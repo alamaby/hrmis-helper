@@ -13,6 +13,7 @@ Future<void> pumpDashboard(
   int absenceDays = 0,
   bool hasRequiredPermissions = true,
   bool isRequestingPermissions = false,
+  String? selectedTypeLabel,
 }) {
   return tester.pumpWidget(
     wrap(
@@ -26,6 +27,7 @@ Future<void> pumpDashboard(
         onRunAttendance: () {},
         onRequestPermissions: () {},
         onOpenAutomation: () {},
+        selectedTypeLabel: selectedTypeLabel,
       ),
     ),
   );
@@ -116,6 +118,18 @@ void main() {
       await pumpDashboard(tester);
 
       expect(find.text('Automation is checking HRMIS.'), findsOneWidget);
+    });
+
+    testWidgets('shows last attendance type when provided', (tester) async {
+      await pumpDashboard(tester, selectedTypeLabel: 'WFH');
+
+      expect(find.text('Last attendance type: WFH'), findsOneWidget);
+    });
+
+    testWidgets('hides last attendance type when not provided', (tester) async {
+      await pumpDashboard(tester);
+
+      expect(find.textContaining('Last attendance type'), findsNothing);
     });
   });
 

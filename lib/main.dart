@@ -4,123 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'attendance_type_picker.dart';
 import 'config.dart';
 import 'core/app_logger.dart';
+import 'core/attendance_prepare_js.dart';
 import 'core/attendance_summary.dart';
+import 'core/attendance_type.dart';
 import 'core/hrmis_uri.dart';
 import 'core/javascript_result.dart';
 import 'core/status_messages.dart';
 import 'credential_screen.dart';
 import 'dashboard_view.dart';
 import 'notification_service.dart';
-
-const _attendanceDescriptionText = 'Bismillah, semangat bekerja!';
-
-const _prepareAttendanceFormJs = '''
-(function () {
-  function findDescriptionField() {
-    const byId = document.getElementById('start_description');
-    if (byId) return byId;
-
-    const formField = document.querySelector(
-      '#form-edit-attendance textarea[name="start_description"], #form-edit-attendance textarea'
-    );
-    if (formField) return formField;
-
-    const byName = Array.from(document.querySelectorAll('textarea')).find(
-      (field) => (field.name || '').toLowerCase().includes('description')
-    );
-    if (byName) return byName;
-
-    for (const field of document.querySelectorAll('textarea')) {
-      const placeholder = (field.getAttribute('placeholder') || '').toLowerCase();
-      const id = (field.id || '').toLowerCase();
-      const name = (field.name || '').toLowerCase();
-      if (
-        placeholder.includes('ready to work') ||
-        placeholder.includes('description') ||
-        id.includes('description') ||
-        name.includes('description')
-      ) {
-        return field;
-      }
-
-      const labelText = Array.from(field.labels || [])
-        .map((label) => (label.textContent || '').trim())
-        .join(' ');
-      if (/description/i.test(labelText)) return field;
-    }
-
-    for (const label of document.querySelectorAll('label')) {
-      if (!/description/i.test((label.textContent || '').trim())) continue;
-
-      const forId = label.getAttribute('for');
-      if (forId) {
-        const linked = document.getElementById(forId);
-        if (linked) return linked;
-      }
-
-      const container = label.closest(
-        '.form-group, .mb-3, .field, .row, .col, div'
-      );
-      const textarea = container?.querySelector('textarea');
-      if (textarea) return textarea;
-    }
-
-    const visibleTextarea = Array.from(document.querySelectorAll('textarea')).find(
-      (field) => field.offsetParent !== null && !field.disabled
-    );
-    if (visibleTextarea) return visibleTextarea;
-
-    return null;
-  }
-
-  function selectWfoIfPresent() {
-    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
-    const labels = Array.from(document.querySelectorAll('label'));
-    const candidates = [
-      document.getElementById('flag_location-WFO'),
-      radios.find((element) => {
-        const id = (element.id || '').toLowerCase();
-        const value = (element.value || '').toLowerCase();
-        return id.includes('wfo') || value.includes('wfo');
-      }),
-      labels.find((element) => {
-        const text = (element.textContent || '').trim().toLowerCase();
-        const forId = (element.getAttribute('for') || '').toLowerCase();
-        return text.includes('work from office') || forId.includes('wfo');
-      }),
-    ].filter(Boolean);
-
-    for (const element of candidates) {
-      element.click();
-      console.log('[AutoAttend] WFO option selected:', element.id || element.value);
-      return true;
-    }
-
-    console.log('[AutoAttend] WFO option not present; continuing without it.');
-    return false;
-  }
-
-  try {
-    const description = findDescriptionField();
-    if (!description) {
-      console.log('[AutoAttend] Description field not found.');
-      return 'missing-description';
-    }
-
-    description.value = '$_attendanceDescriptionText';
-    description.dispatchEvent(new Event('input', { bubbles: true }));
-    description.dispatchEvent(new Event('change', { bubbles: true }));
-
-    selectWfoIfPresent();
-    return 'attendance-prepared';
-  } catch (error) {
-    console.log('[AutoAttend] Attendance preparation failed:', error);
-    return 'attendance-error';
-  }
-})();
-''';
 
 const _submitAttendanceFormJs = '''
 (function () {
@@ -239,6 +134,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
   static final Uri _homeUri = Uri.parse('https://hrmis.neuron.id/doornew');
 
   InAppWebViewController? _webViewController;
+  AttendanceType _selectedAttendanceType = AttendanceType.wfo;
   int _selectedTabIndex = 0;
   String _status = 'Checking permissions...';
   AttendanceTodayStatus _attendanceTodayStatus = AttendanceTodayStatus.checking;
@@ -381,6 +277,14 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     );
   }
 
+  Future<void> _onRunAttendancePressed() async {
+    final type = await showAttendanceTypePicker(context);
+    if (type == null || !mounted) return;
+
+    setState(() => _selectedAttendanceType = type);
+    await _runAttendanceAutomation();
+  }
+
   Future<void> _runAttendanceAutomation() async {
     _loginInjected = false;
     _loginInjectionInProgress = false;
@@ -519,7 +423,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
   Future<void> _injectAttendanceForm() async {
     _attendanceInjectionInProgress = true;
-    _updateStatus('Preparing attendance form...');
+    _updateStatus(
+      'Preparing attendance form (${_selectedAttendanceType.label})...',
+    );
 
     final recordedResult = await _evaluateJavascript('''
       (function () {
@@ -578,7 +484,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
         return;
       }
 
-      prepareResult = await _evaluateJavascript(_prepareAttendanceFormJs);
+      prepareResult = await _evaluateJavascript(
+          prepareAttendanceFormJs(_selectedAttendanceType));
       if (prepareResult == 'attendance-prepared') break;
 
       log(
@@ -594,40 +501,43 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       return;
     }
 
-    _updateStatus('Waiting for GPS...');
-    const maxGeolocationAttempts = 20;
-    String? geolocationResult;
+    // HRMIS only validates the office geofence for WFO; other types skip GPS.
+    if (_selectedAttendanceType.requiresGeolocation) {
+      _updateStatus('Waiting for GPS...');
+      const maxGeolocationAttempts = 20;
+      String? geolocationResult;
 
-    for (var attempt = 1; attempt <= maxGeolocationAttempts; attempt += 1) {
-      if (!mounted) return;
+      for (var attempt = 1; attempt <= maxGeolocationAttempts; attempt += 1) {
+        if (!mounted) return;
 
-      final currentUri = await _currentUri();
-      if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
-        _attendanceInjectionInProgress = false;
-        _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-        _updateStatus('Attendance save skipped: not on form page.');
-        log('[AutoAttend] Save skipped. Current URL: $currentUri');
-        return;
+        final currentUri = await _currentUri();
+        if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
+          _attendanceInjectionInProgress = false;
+          _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+          _updateStatus('Attendance save skipped: not on form page.');
+          log('[AutoAttend] Save skipped. Current URL: $currentUri');
+          return;
+        }
+
+        geolocationResult = await _evaluateJavascript(_checkGeolocationReadyJs);
+        if (geolocationResult == 'geolocation-ready') break;
+
+        log(
+          '[AutoAttend] Geolocation attempt $attempt result: $geolocationResult',
+        );
+        _updateStatus(
+          'Waiting for GPS ($attempt/$maxGeolocationAttempts)...',
+        );
+        await Future<void>.delayed(const Duration(seconds: 1));
       }
 
-      geolocationResult = await _evaluateJavascript(_checkGeolocationReadyJs);
-      if (geolocationResult == 'geolocation-ready') break;
-
-      log(
-        '[AutoAttend] Geolocation attempt $attempt result: $geolocationResult',
-      );
-      _updateStatus(
-        'Waiting for GPS ($attempt/$maxGeolocationAttempts)...',
-      );
-      await Future<void>.delayed(const Duration(seconds: 1));
-    }
-
-    if (geolocationResult != 'geolocation-ready') {
-      _attendanceInjectionInProgress = false;
-      _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-      _updateStatus(geolocationFailureStatus(geolocationResult));
-      log('[AutoAttend] Geolocation not ready: $geolocationResult');
-      return;
+      if (geolocationResult != 'geolocation-ready') {
+        _attendanceInjectionInProgress = false;
+        _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+        _updateStatus(geolocationFailureStatus(geolocationResult));
+        log('[AutoAttend] Geolocation not ready: $geolocationResult');
+        return;
+      }
     }
 
     _updateStatus('Saving attendance...');
@@ -919,11 +829,12 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
               absenceDays: _absenceDays,
               hasRequiredPermissions: _hasRequiredPermissions,
               isRequestingPermissions: _isRequestingPermissions,
-              onRunAttendance: _runAttendanceAutomation,
+              onRunAttendance: _onRunAttendancePressed,
               onRequestPermissions: _requestPermissions,
               onOpenAutomation: () {
                 setState(() => _selectedTabIndex = 1);
               },
+              selectedTypeLabel: _selectedAttendanceType.label,
             ),
             _buildAutomationView(),
           ],

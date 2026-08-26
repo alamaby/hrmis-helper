@@ -8,6 +8,8 @@ The app loads HRMIS in `flutter_inappwebview`, injects JavaScript for login and 
 
 - Automated HRMIS login using credentials stored in Android Keystore (`flutter_secure_storage`).
 - In-app credential management screen with validation and password visibility toggle.
+- Attendance type selection (WFO / WFH / SPJ) shown before the automation runs.
+- Geolocation wait is skipped for WFH and SPJ — HRMIS only validates the office geofence for WFO.
 - Existing session detection, so the app can skip login when HRMIS is already authenticated.
 - Automatic navigation to the attendance form.
 - WFO attendance selection and description injection.
@@ -139,6 +141,8 @@ lib/
   core/
     app_logger.dart         # Release-safe logger (silent in release builds)
     hrmis_uri.dart          # HRMIS URL routing helpers
+    attendance_type.dart    # WFO/WFH/SPJ enum with HRMIS radio mapping
+    attendance_prepare_js.dart # Injected JS builder per attendance type
     attendance_summary.dart # Attendance summary model + JSON parser
     javascript_result.dart  # WebView JS result normalization
     status_messages.dart    # Automation failure message mappers
