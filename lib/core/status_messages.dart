@@ -2,6 +2,8 @@ String prepareFailureStatus(String? result) {
   return switch (result) {
     'missing-description' =>
       'Description field not found. Stay on the attendance form and retry.',
+    'missing-flag-location' =>
+      'Attendance type option not found on the form. Reload and retry.',
     'attendance-error' => 'Attendance form preparation failed.',
     _ => 'Attendance form not ready.',
   };

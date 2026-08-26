@@ -18,6 +18,13 @@ void main() {
       );
     });
 
+    test('maps missing-flag-location', () {
+      expect(
+        prepareFailureStatus('missing-flag-location'),
+        'Attendance type option not found on the form. Reload and retry.',
+      );
+    });
+
     test('falls back for unknown or missing codes', () {
       expect(prepareFailureStatus(null), 'Attendance form not ready.');
       expect(prepareFailureStatus('unknown'), 'Attendance form not ready.');
