@@ -82,8 +82,15 @@ const _checkGeolocationReadyJs = '''
     if (latValue === 0 || lngValue === 0) {
       return 'geolocation-missing';
     }
-    if (!locList || !locList.value) {
+    // location-list lives inside #wfoOnly and is populated async via
+    // getLocation() + AJAX. Image 3 shows map ready while list still empty,
+    // so treat empty list as warning only when lat/lng already ready.
+    if (locList && locList.options && locList.options.length > 0 && !locList.value) {
+      console.log('[AutoAttend] location-list empty despite having options');
       return 'location-list-missing';
+    }
+    if (!locList) {
+      console.log('[AutoAttend] location-list element missing — continuing as ready');
     }
 
     return 'geolocation-ready';
@@ -222,7 +229,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     if (saved == true && mounted) {
       await Config.load();
       setState(() {});
-      _runAttendanceAutomation();
+      // Opsi B: tawarkan picker segera setelah kredensial tersimpan,
+      // bukan auto-run WFO silent.
+      await _onRunAttendancePressed();
     }
   }
 
@@ -277,8 +286,10 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     );
   }
 
-  Future<void> _onRunAttendancePressed() async {
-    final type = await showAttendanceTypePicker(context);
+  Future<void> _onRunAttendancePressed([BuildContext? sheetContext]) async {
+    final ctx = sheetContext ?? context;
+    final type = await showAttendanceTypePicker(ctx);
+    log('[Picker] result=$type');
     if (type == null || !mounted) return;
 
     setState(() => _selectedAttendanceType = type);
@@ -422,6 +433,10 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
   }
 
   Future<void> _injectAttendanceForm() async {
+    if (_attendanceInjected || _attendanceInjectionInProgress) {
+      log('[Inject] skipped — already injected/in-progress');
+      return;
+    }
     _attendanceInjectionInProgress = true;
     _updateStatus(
       'Preparing attendance form (${_selectedAttendanceType.label})...',
@@ -430,14 +445,23 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     final recordedResult = await _evaluateJavascript('''
       (function () {
         try {
+          const selectors = [
+            '.messages-group', '.messages-group strong',
+            '.messages-group .messages', '.messages-group span',
+            '.alert.alert-success', '.alert-success',
+            '.alert[role="alert"]', '[role="alert"]',
+            '.alert', '.message', '.success'
+          ].join(', ');
           const messages = Array.from(
-            document.querySelectorAll(
-              '.messages-group, .messages-group strong, .messages-group .messages, .messages-group span'
-            )
+            document.querySelectorAll(selectors)
           ).map((element) => (element.textContent || '').trim().toLowerCase());
 
           const hasRecordedMessage = messages.some(
-            (message) => message.includes('attendance has been recorded')
+            (message) =>
+              message.includes('attendance has been recorded') ||
+              message.includes('tercatat') ||
+              message.includes('sudah') && message.includes('recorded') ||
+              message.includes('has been recorded at')
           );
 
           if (hasRecordedMessage) {
@@ -452,6 +476,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
         }
       })();
     ''');
+
+    log('[Inject] recordedResult=$recordedResult type=${_selectedAttendanceType.label}');
 
     if (recordedResult == 'attendance-already-recorded') {
       _attendanceInjected = true;
@@ -822,19 +848,21 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
         child: IndexedStack(
           index: _selectedTabIndex,
           children: [
-            DashboardView(
-              attendanceStatus: _attendanceTodayStatus,
-              automationStatus: _status,
-              lateMinutes: _lateMinutes,
-              absenceDays: _absenceDays,
-              hasRequiredPermissions: _hasRequiredPermissions,
-              isRequestingPermissions: _isRequestingPermissions,
-              onRunAttendance: _onRunAttendancePressed,
-              onRequestPermissions: _requestPermissions,
-              onOpenAutomation: () {
-                setState(() => _selectedTabIndex = 1);
-              },
-              selectedTypeLabel: _selectedAttendanceType.label,
+            Builder(
+              builder: (innerContext) => DashboardView(
+                attendanceStatus: _attendanceTodayStatus,
+                automationStatus: _status,
+                lateMinutes: _lateMinutes,
+                absenceDays: _absenceDays,
+                hasRequiredPermissions: _hasRequiredPermissions,
+                isRequestingPermissions: _isRequestingPermissions,
+                onRunAttendance: () => _onRunAttendancePressed(innerContext),
+                onRequestPermissions: _requestPermissions,
+                onOpenAutomation: () {
+                  setState(() => _selectedTabIndex = 1);
+                },
+                selectedTypeLabel: _selectedAttendanceType.label,
+              ),
             ),
             _buildAutomationView(),
           ],

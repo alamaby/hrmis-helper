@@ -7,6 +7,10 @@ const Color _primaryBlue = Color(0xFF246BFD);
 Future<AttendanceType?> showAttendanceTypePicker(BuildContext context) {
   return showModalBottomSheet<AttendanceType>(
     context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    isDismissible: true,
+    enableDrag: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
