@@ -1,10 +1,13 @@
 import 'attendance_type.dart';
 
-const String kAttendanceDescriptionText = 'Bismillah, semangat bekerja!';
-
 /// Builds the injected JS that selects the requested attendance type radio
 /// and fills the attendance description field on the HRMIS form.
-String prepareAttendanceFormJs(AttendanceType type) {
+///
+/// [description] must be chosen once per attendance session (outside the
+/// prepare retry loop) and must not contain apostrophes, backslashes, or
+/// newlines — it is spliced into a single-quoted JS string.
+String prepareAttendanceFormJs(AttendanceType type,
+    {required String description}) {
   // WFO stays tolerant to a missing radio (legacy behavior); other types
   // must never silently submit as the form's default (WFO) without GPS.
   final radioRequired = type.requiresGeolocation ? 'false' : 'true';
@@ -101,7 +104,7 @@ String prepareAttendanceFormJs(AttendanceType type) {
       return 'missing-description';
     }
 
-    description.value = '$kAttendanceDescriptionText';
+    description.value = '$description';
     description.dispatchEvent(new Event('input', { bubbles: true }));
     description.dispatchEvent(new Event('change', { bubbles: true }));
 

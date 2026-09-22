@@ -4,6 +4,8 @@ import 'package:codex_auto_attend/core/attendance_prepare_js.dart';
 import 'package:codex_auto_attend/core/attendance_type.dart';
 
 void main() {
+  const kTestDescription = 'Bismillah, semangat bekerja!';
+
   group('AttendanceType HRMIS radio mapping', () {
     test('wfo maps to flag_location-WFO with value 1', () {
       expect(AttendanceType.wfo.radioId, 'flag_location-WFO');
@@ -37,44 +39,51 @@ void main() {
 
   group('prepareAttendanceFormJs', () {
     test('targets the selected type radio by id and value fallback', () {
-      final wfoJs = prepareAttendanceFormJs(AttendanceType.wfo);
+      final wfoJs = prepareAttendanceFormJs(AttendanceType.wfo,
+          description: kTestDescription);
       expect(wfoJs, contains("getElementById('flag_location-WFO')"));
       expect(wfoJs, contains('[value="1"]'));
 
-      final wfhJs = prepareAttendanceFormJs(AttendanceType.wfh);
+      final wfhJs = prepareAttendanceFormJs(AttendanceType.wfh,
+          description: kTestDescription);
       expect(wfhJs, contains("getElementById('flag_location-KEMAH')"));
       expect(wfhJs, contains('[value="2"]'));
 
-      final spjJs = prepareAttendanceFormJs(AttendanceType.spj);
+      final spjJs = prepareAttendanceFormJs(AttendanceType.spj,
+          description: kTestDescription);
       expect(spjJs, contains("getElementById('flag_location-SPJ')"));
       expect(spjJs, contains('[value="3"]'));
     });
 
     test('always fills the required description field', () {
-      final js = prepareAttendanceFormJs(AttendanceType.spj);
+      final js = prepareAttendanceFormJs(AttendanceType.spj,
+          description: kTestDescription);
 
       expect(js, contains("getElementById('start_description')"));
-      expect(js, contains(kAttendanceDescriptionText));
+      expect(js, contains("description.value = '$kTestDescription'"));
       expect(js, contains("'attendance-prepared'"));
       expect(js, contains("'missing-description'"));
     });
 
     test('no longer hardcodes a single attendance type', () {
-      final js = prepareAttendanceFormJs(AttendanceType.wfh);
+      final js = prepareAttendanceFormJs(AttendanceType.wfh,
+          description: kTestDescription);
 
       expect(js, contains("input[name=\"flag_location\"]"));
       expect(js, isNot(contains('work from office')));
     });
 
     test('fails loudly when a non-wfo radio is missing', () {
-      final js = prepareAttendanceFormJs(AttendanceType.wfh);
+      final js = prepareAttendanceFormJs(AttendanceType.wfh,
+          description: kTestDescription);
 
       expect(js, contains("'missing-flag-location'"));
       expect(js, contains('if (!typeSelected && true)'));
     });
 
     test('keeps wfo tolerant to a missing radio (legacy behavior)', () {
-      final js = prepareAttendanceFormJs(AttendanceType.wfo);
+      final js = prepareAttendanceFormJs(AttendanceType.wfo,
+          description: kTestDescription);
 
       expect(js, contains("'missing-flag-location'"));
       expect(js, contains('if (!typeSelected && false)'));

@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'attendance_type_picker.dart';
 import 'config.dart';
 import 'core/app_logger.dart';
+import 'core/attendance_descriptions.dart';
 import 'core/attendance_prepare_js.dart';
 import 'core/attendance_summary.dart';
 import 'core/attendance_type.dart';
@@ -488,6 +489,10 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       return;
     }
 
+    // Pick once per session so retries keep the same description.
+    final attendanceDescription = pickRandomAttendanceDescription();
+    log('[Inject] description: $attendanceDescription');
+
     String? prepareResult;
     const maxPrepareAttempts = 5;
 
@@ -511,7 +516,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       }
 
       prepareResult = await _evaluateJavascript(
-          prepareAttendanceFormJs(_selectedAttendanceType));
+          prepareAttendanceFormJs(_selectedAttendanceType,
+              description: attendanceDescription));
       if (prepareResult == 'attendance-prepared') break;
 
       log(
