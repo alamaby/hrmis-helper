@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'attendance_type_picker.dart';
 import 'config.dart';
@@ -134,7 +136,7 @@ class AttendanceAutomationPage extends StatefulWidget {
       _AttendanceAutomationPageState();
 }
 
-class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
+class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> with WidgetsBindingObserver {
   static final Uri _loginUri = Uri.parse('https://hrmis.neuron.id/doornew');
   static final Uri _formUri = Uri.parse(
     'https://hrmis.neuron.id/attendance/dashboard/form',
@@ -175,11 +177,64 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'hrmis_automation',
+        channelName: 'HRMIS Automation',
+        channelDescription:
+            'Keeps the app alive while HRMIS attendance runs.',
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: false,
+      ),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.nothing(),
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+    FlutterForegroundTask.setTaskHandler(_HrmisKeepAliveTaskHandler());
     _checkPermissions();
     if (!Config.hasCredentials) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _openCredentialScreen();
       });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _releaseKeepAlive();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && _attendanceInjectionInProgress) {
+      _updateStatus('Paused — return to app to continue.');
+      log('[AutoAttend] Paused during injection');
+    } else if (
+        state == AppLifecycleState.resumed && _attendanceInjectionInProgress) {
+      _updateStatus('Resumed — checking HRMIS...');
+      log('[AutoAttend] Resumed during injection');
+    }
+  }
+
+  Future<void> _releaseKeepAlive() async {
+    try {
+      WakelockPlus.disable();
+    } catch (e) {
+      log('[AutoAttend] Wakelock disable error: $e');
+    }
+    try {
+      if (await FlutterForegroundTask.isRunningService) {
+        await FlutterForegroundTask.stopService();
+      }
+    } catch (e) {
+      log('[AutoAttend] Foreground service stop error: $e');
     }
   }
 
@@ -341,6 +396,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     _homeInspectionRequested = true;
     _homeInspectionCompleted = false;
     _updateStatus('Opening HRMIS home...');
+    await _releaseKeepAlive();
 
     await _webViewController?.loadUrl(
       urlRequest: URLRequest(url: WebUri(_homeUri.toString())),
@@ -457,199 +513,222 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     _updateStatus(
       'Preparing attendance form (${_selectedAttendanceType.label})...',
     );
-
-    final recordedResult = await _evaluateJavascript('''
-      (function () {
-        try {
-          const selectors = [
-            '.messages-group', '.messages-group strong',
-            '.messages-group .messages', '.messages-group span',
-            '.alert.alert-success', '.alert-success',
-            '.alert[role="alert"]', '[role="alert"]',
-            '.alert', '.message', '.success'
-          ].join(', ');
-          const messages = Array.from(
-            document.querySelectorAll(selectors)
-          ).map((element) => (element.textContent || '').trim().toLowerCase());
-
-          const hasRecordedMessage = messages.some(
-            (message) =>
-              message.includes('attendance has been recorded') ||
-              message.includes('tercatat') ||
-              message.includes('sudah') && message.includes('recorded') ||
-              message.includes('has been recorded at')
-          );
-
-          if (hasRecordedMessage) {
-            console.log('[AutoAttend] Attendance has already been recorded.');
-            return 'attendance-already-recorded';
-          }
-
-          return 'attendance-not-recorded';
-        } catch (error) {
-          console.log('[AutoAttend] Attendance message check failed:', error);
-          return 'attendance-message-check-error';
-        }
-      })();
-    ''');
-
-    log('[Inject] recordedResult=$recordedResult type=${_selectedAttendanceType.label}');
-
-    if (recordedResult == 'attendance-already-recorded') {
-      _attendanceInjected = true;
-      _attendanceInjectionInProgress = false;
-      _attendanceTodayStatus = AttendanceTodayStatus.recorded;
-      _updateStatus('Attendance already recorded.');
-      await _navigateToHomeForInspection();
-      return;
+    try {
+      await WakelockPlus.enable();
+    } catch (e) {
+      log('[AutoAttend] Wakelock enable error: $e');
+    }
+    try {
+      if (!await FlutterForegroundTask.isRunningService) {
+        await FlutterForegroundTask.startService(
+          serviceId: 2001,
+          notificationTitle: 'HRMIS automation running',
+          notificationText: 'Keep app open until verified',
+        );
+      }
+    } catch (e) {
+      log('[AutoAttend] Foreground service start error: $e');
     }
 
-    // Pick once per session so retries keep the same description.
-    final attendanceDescription = pickRandomAttendanceDescription();
-    log('[Inject] description: $attendanceDescription');
+    bool injectionActive = true;
+    try {
+      final recordedResult = await _evaluateJavascript('''
+        (function () {
+          try {
+            const selectors = [
+              '.messages-group', '.messages-group strong',
+              '.messages-group .messages', '.messages-group span',
+              '.alert.alert-success', '.alert-success',
+              '.alert[role="alert"]', '[role="alert"]',
+              '.alert', '.message', '.success'
+            ].join(', ');
+            const messages = Array.from(
+              document.querySelectorAll(selectors)
+            ).map((element) => (element.textContent || '').trim().toLowerCase());
 
-    String? prepareResult;
-    const maxPrepareAttempts = 5;
+            const hasRecordedMessage = messages.some(
+              (message) =>
+                message.includes('attendance has been recorded') ||
+                message.includes('tercatat') ||
+                message.includes('sudah') && message.includes('recorded') ||
+                message.includes('has been recorded at')
+            );
 
-    for (var attempt = 1; attempt <= maxPrepareAttempts; attempt += 1) {
-      if (attempt > 1) {
-        _updateStatus(
-          'Waiting for attendance form ($attempt/$maxPrepareAttempts)...',
-        );
-        await Future<void>.delayed(const Duration(seconds: 2));
-      }
+            if (hasRecordedMessage) {
+              console.log('[AutoAttend] Attendance has already been recorded.');
+              return 'attendance-already-recorded';
+            }
 
-      if (!mounted) return;
+            return 'attendance-not-recorded';
+          } catch (error) {
+            console.log('[AutoAttend] Attendance message check failed:', error);
+            return 'attendance-message-check-error';
+          }
+        })();
+      ''');
 
-      final currentUri = await _currentUri();
-      if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
-        _attendanceInjectionInProgress = false;
-        _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-        _updateStatus('Attendance form left before fields were ready.');
-        log('[AutoAttend] Prepare skipped. Current URL: $currentUri');
+      log('[Inject] recordedResult=$recordedResult type=${_selectedAttendanceType.label}');
+
+      if (recordedResult == 'attendance-already-recorded') {
+        _attendanceInjected = true;
+        _attendanceTodayStatus = AttendanceTodayStatus.recorded;
+        _updateStatus('Attendance already recorded.');
+        await _navigateToHomeForInspection();
         return;
       }
 
-      prepareResult = await _evaluateJavascript(
-          prepareAttendanceFormJs(_selectedAttendanceType,
-              description: attendanceDescription));
-      if (prepareResult == 'attendance-prepared') break;
+      // Pick once per session so retries keep the same description.
+      final attendanceDescription = pickRandomAttendanceDescription();
+      log('[Inject] description: $attendanceDescription');
 
-      log(
-        '[AutoAttend] Attendance prepare attempt $attempt result: $prepareResult',
-      );
-    }
+      String? prepareResult;
+      const maxPrepareAttempts = 5;
 
-    if (prepareResult != 'attendance-prepared') {
-      _attendanceInjectionInProgress = false;
-      _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-      _updateStatus(prepareFailureStatus(prepareResult));
-      log('[AutoAttend] Attendance preparation result: $prepareResult');
-      return;
-    }
+      for (var attempt = 1; attempt <= maxPrepareAttempts; attempt += 1) {
+        if (attempt > 1) {
+          _updateStatus(
+            'Waiting for attendance form ($attempt/$maxPrepareAttempts)...',
+          );
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
 
-    // HRMIS only validates the office geofence for WFO; other types skip GPS.
-    if (_selectedAttendanceType.requiresGeolocation) {
-      _updateStatus('Waiting for GPS...');
-      const maxGeolocationAttempts = 20;
-      String? geolocationResult;
-
-      for (var attempt = 1; attempt <= maxGeolocationAttempts; attempt += 1) {
         if (!mounted) return;
 
         final currentUri = await _currentUri();
         if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
           _attendanceInjectionInProgress = false;
           _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-          _updateStatus('Attendance save skipped: not on form page.');
-          log('[AutoAttend] Save skipped. Current URL: $currentUri');
+          _updateStatus('Attendance form left before fields were ready.');
+          log('[AutoAttend] Prepare skipped. Current URL: $currentUri');
           return;
         }
 
-        geolocationResult = await _evaluateJavascript(_checkGeolocationReadyJs);
-        if (geolocationResult == 'geolocation-ready') break;
+        prepareResult = await _evaluateJavascript(
+            prepareAttendanceFormJs(_selectedAttendanceType,
+                description: attendanceDescription));
+        if (prepareResult == 'attendance-prepared') break;
 
         log(
-          '[AutoAttend] Geolocation attempt $attempt result: $geolocationResult',
+          '[AutoAttend] Attendance prepare attempt $attempt result: $prepareResult',
         );
-        _updateStatus(
-          'Waiting for GPS ($attempt/$maxGeolocationAttempts)...',
-        );
-        await Future<void>.delayed(const Duration(seconds: 1));
       }
 
-      if (geolocationResult != 'geolocation-ready') {
+      if (prepareResult != 'attendance-prepared') {
         _attendanceInjectionInProgress = false;
         _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-        _updateStatus(geolocationFailureStatus(geolocationResult));
-        log('[AutoAttend] Geolocation not ready: $geolocationResult');
+        _updateStatus(prepareFailureStatus(prepareResult));
+        log('[AutoAttend] Attendance preparation result: $prepareResult');
         return;
       }
-    }
 
-    _updateStatus('Saving attendance...');
-    String? saveResult;
-    const maxSaveAttempts = 3;
+      // HRMIS only validates the office geofence for WFO; other types skip GPS.
+      if (_selectedAttendanceType.requiresGeolocation) {
+        _updateStatus('Waiting for GPS...');
+        const maxGeolocationAttempts = 20;
+        String? geolocationResult;
 
-    for (var attempt = 1; attempt <= maxSaveAttempts; attempt += 1) {
-      if (attempt > 1) {
-        await Future<void>.delayed(const Duration(seconds: 1));
-      }
+        for (var attempt = 1; attempt <= maxGeolocationAttempts; attempt += 1) {
+          if (!mounted) return;
 
-      saveResult = await _evaluateJavascript(_submitAttendanceFormJs);
-      if (saveResult == 'attendance-save-submitted') break;
-      log('[AutoAttend] Attendance save attempt $attempt result: $saveResult');
-    }
-
-    _attendanceInjectionInProgress = false;
-    if (saveResult == 'attendance-save-submitted') {
-      _attendanceInjected = true;
-      _updateStatus('Attendance submitted. Verifying...');
-
-      await Future<void>.delayed(const Duration(seconds: 5));
-
-      if (!mounted) return;
-
-      await _webViewController?.loadUrl(
-        urlRequest: URLRequest(url: WebUri(_formUri.toString())),
-      );
-
-      await Future<void>.delayed(const Duration(seconds: 3));
-
-      if (!mounted) return;
-
-      final verifyResult = await _evaluateJavascript('''
-        (function () {
-          try {
-            const messages = Array.from(
-              document.querySelectorAll('.alert, .message, .success, .error, [role="alert"]')
-            );
-            for (const el of messages) {
-              const text = (el.textContent || '').toLowerCase();
-              if (text.includes('sudah') || text.includes('already') || text.includes('tercatat') || text.includes('recorded')) {
-                return 'attendance-already-recorded';
-              }
-            }
-            return 'attendance-not-recorded';
-          } catch (error) {
-            return 'verify-error';
+          final currentUri = await _currentUri();
+          if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
+            _attendanceInjectionInProgress = false;
+            _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+            _updateStatus('Attendance save skipped: not on form page.');
+            log('[AutoAttend] Save skipped. Current URL: $currentUri');
+            return;
           }
-        })();
-      ''');
 
-      if (verifyResult == 'attendance-already-recorded') {
-        _attendanceTodayStatus = AttendanceTodayStatus.recorded;
-        _updateStatus('Attendance verified as recorded.');
-      } else {
-        _attendanceTodayStatus = AttendanceTodayStatus.recorded;
-        _updateStatus('Attendance submitted (verification inconclusive).');
+          geolocationResult = await _evaluateJavascript(_checkGeolocationReadyJs);
+          if (geolocationResult == 'geolocation-ready') break;
+
+          log(
+            '[AutoAttend] Geolocation attempt $attempt result: $geolocationResult',
+          );
+          _updateStatus(
+            'Waiting for GPS ($attempt/$maxGeolocationAttempts)...',
+          );
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+
+        if (geolocationResult != 'geolocation-ready') {
+          _attendanceInjectionInProgress = false;
+          _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+          _updateStatus(geolocationFailureStatus(geolocationResult));
+          log('[AutoAttend] Geolocation not ready: $geolocationResult');
+          return;
+        }
       }
 
-      await _navigateToHomeForInspection();
-    } else {
-      _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-      _updateStatus('Attendance save not submitted.');
-      log('[AutoAttend] Attendance save result: $saveResult');
+      _updateStatus('Saving attendance...');
+      String? saveResult;
+      const maxSaveAttempts = 3;
+
+      for (var attempt = 1; attempt <= maxSaveAttempts; attempt += 1) {
+        if (attempt > 1) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+
+        saveResult = await _evaluateJavascript(_submitAttendanceFormJs);
+        if (saveResult == 'attendance-save-submitted') break;
+        log('[AutoAttend] Attendance save attempt $attempt result: $saveResult');
+      }
+
+      _attendanceInjectionInProgress = false;
+      if (saveResult == 'attendance-save-submitted') {
+        _attendanceInjected = true;
+        _updateStatus('Attendance submitted. Verifying...');
+
+        await Future<void>.delayed(const Duration(seconds: 5));
+
+        if (!mounted) return;
+
+        await _webViewController?.loadUrl(
+          urlRequest: URLRequest(url: WebUri(_formUri.toString())),
+        );
+
+        await Future<void>.delayed(const Duration(seconds: 3));
+
+        if (!mounted) return;
+
+        final verifyResult = await _evaluateJavascript('''
+          (function () {
+            try {
+              const messages = Array.from(
+                document.querySelectorAll('.alert, .message, .success, .error, [role="alert"]')
+              );
+              for (const el of messages) {
+                const text = (el.textContent || '').toLowerCase();
+                if (text.includes('sudah') || text.includes('already') || text.includes('tercatat') || text.includes('recorded')) {
+                  return 'attendance-already-recorded';
+                }
+              }
+              return 'attendance-not-recorded';
+            } catch (error) {
+              return 'verify-error';
+            }
+          })();
+        ''');
+
+        if (verifyResult == 'attendance-already-recorded') {
+          _attendanceTodayStatus = AttendanceTodayStatus.recorded;
+          _updateStatus('Attendance verified as recorded.');
+        } else {
+          _attendanceTodayStatus = AttendanceTodayStatus.recorded;
+          _updateStatus('Attendance submitted (verification inconclusive).');
+        }
+
+        await _navigateToHomeForInspection();
+      } else {
+        _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+        _updateStatus('Attendance save not submitted.');
+        log('[AutoAttend] Attendance save result: $saveResult');
+      }
+    } finally {
+      if (injectionActive) {
+        injectionActive = false;
+        await _releaseKeepAlive();
+      }
     }
   }
 
@@ -1096,4 +1175,17 @@ class _IdleAutomationPlaceholder extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Minimal TaskHandler for flutter_foreground_task.
+/// No periodic work — only keeps the service alive during injection.
+class _HrmisKeepAliveTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {}
+
+  @override
+  void onRepeatEvent(DateTime timestamp) {}
+
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
 }
