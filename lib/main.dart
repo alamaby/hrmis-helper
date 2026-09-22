@@ -158,6 +158,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
   bool _homeInspectionInProgress = false;
   bool _homeInspectionCompleted = false;
   bool _isRequestingPermissions = false;
+  // Idle until explicit Run — prevents silent WFO auto-run.
+  bool _automationRequested = false;
 
   final InAppWebViewSettings _settings = InAppWebViewSettings(
     javaScriptEnabled: true,
@@ -192,7 +194,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     setState(() {
       _hasRequiredPermissions = locationGranted && cameraGranted;
       _status = _hasRequiredPermissions
-          ? 'Opening HRMIS...'
+          ? 'Choose Run attendance to start.'
           : 'Location and camera permissions are required.';
     });
   }
@@ -217,7 +219,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
       _isRequestingPermissions = false;
       _hasRequiredPermissions = locationGranted && cameraGranted;
       _status = _hasRequiredPermissions
-          ? 'Opening HRMIS...'
+          ? 'Choose Run attendance to start.'
           : 'Please grant location and camera permissions to continue.';
     });
   }
@@ -244,6 +246,11 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
     final url = uri.toString();
     log('[WebView] Load stopped: $url');
+
+    if (!_automationRequested) {
+      log('[AutoAttend] Idle — automation not requested yet');
+      return;
+    }
 
     if (HrmisUri.isHomeInspectionPage(uri) &&
         _homeInspectionRequested &&
@@ -294,6 +301,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     if (type == null || !mounted) return;
 
     setState(() => _selectedAttendanceType = type);
+    _automationRequested = true;
     await _runAttendanceAutomation();
   }
 
@@ -317,9 +325,16 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
 
     if (!_hasRequiredPermissions) return;
 
-    await _webViewController?.loadUrl(
-      urlRequest: URLRequest(url: WebUri(_loginUri.toString())),
-    );
+    // On first Run the WebView is created by _buildAutomationView after this
+    // setState, so rely on initialUrlRequest for the very first load. If the
+    // controller already exists (e.g. second Run), navigate explicitly.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_webViewController == null) return;
+      _webViewController?.loadUrl(
+        urlRequest: URLRequest(url: WebUri(_loginUri.toString())),
+      );
+    });
   }
 
   Future<void> _navigateToHomeForInspection() async {
@@ -904,53 +919,55 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> {
     return Stack(
       children: [
         Positioned.fill(
-          child: _hasRequiredPermissions
-              ? InAppWebView(
-                  initialUrlRequest: URLRequest(
-                    url: WebUri(_loginUri.toString()),
-                  ),
-                  initialSettings: _settings,
-                  onWebViewCreated: (controller) {
-                    _webViewController = controller;
-                  },
-                  onLoadStart: (_, uri) {
-                    final host =
-                        uri == null ? null : Uri.tryParse(uri.toString())?.host;
-                    _updateStatus('Loading ${host ?? 'HRMIS'}...');
-                  },
-                  onLoadStop: (_, uri) => _handleLoadStop(uri),
-                  onUpdateVisitedHistory: (_, uri, androidIsReload) =>
-                      _handleLoadStop(uri),
-                  onConsoleMessage: (_, consoleMessage) {
-                    log(
-                      '[WebView console:${consoleMessage.messageLevel}] '
-                      '${consoleMessage.message}',
-                    );
-                  },
-                  onGeolocationPermissionsShowPrompt: (_, origin) async {
-                    return GeolocationPermissionShowPromptResponse(
-                      origin: origin,
-                      allow: true,
-                      retain: true,
-                    );
-                  },
-                  onPermissionRequest: (_, request) async {
-                    return PermissionResponse(
-                      resources: request.resources,
-                      action: PermissionResponseAction.GRANT,
-                    );
-                  },
-                  onReceivedError: (_, request, error) {
-                    log(
-                      '[WebView] Error ${error.type}: ${error.description} '
-                      'for ${request.url}',
-                    );
-                  },
-                )
-              : _PermissionGuard(
+          child: !_hasRequiredPermissions
+              ? _PermissionGuard(
                   isRequesting: _isRequestingPermissions,
                   onRequestPressed: _requestPermissions,
-                ),
+                )
+              : !_automationRequested
+                  ? const _IdleAutomationPlaceholder()
+                  : InAppWebView(
+                      initialUrlRequest: URLRequest(
+                        url: WebUri(_loginUri.toString()),
+                      ),
+                      initialSettings: _settings,
+                      onWebViewCreated: (controller) {
+                        _webViewController = controller;
+                      },
+                      onLoadStart: (_, uri) {
+                        final host =
+                            uri == null ? null : Uri.tryParse(uri.toString())?.host;
+                        _updateStatus('Loading ${host ?? 'HRMIS'}...');
+                      },
+                      onLoadStop: (_, uri) => _handleLoadStop(uri),
+                      onUpdateVisitedHistory: (_, uri, androidIsReload) =>
+                          _handleLoadStop(uri),
+                      onConsoleMessage: (_, consoleMessage) {
+                        log(
+                          '[WebView console:${consoleMessage.messageLevel}] '
+                          '${consoleMessage.message}',
+                        );
+                      },
+                      onGeolocationPermissionsShowPrompt: (_, origin) async {
+                        return GeolocationPermissionShowPromptResponse(
+                          origin: origin,
+                          allow: true,
+                          retain: true,
+                        );
+                      },
+                      onPermissionRequest: (_, request) async {
+                        return PermissionResponse(
+                          resources: request.resources,
+                          action: PermissionResponseAction.GRANT,
+                        );
+                      },
+                      onReceivedError: (_, request, error) {
+                        log(
+                          '[WebView] Error ${error.type}: ${error.description} '
+                          'for ${request.url}',
+                        );
+                      },
+                    ),
         ),
         Positioned(
           left: 12,
@@ -1036,6 +1053,43 @@ class _PermissionGuard extends StatelessWidget {
               onPressed: isRequesting ? null : onRequestPressed,
               icon: const Icon(Icons.verified_user_outlined),
               label: Text(isRequesting ? 'Requesting...' : 'Grant permissions'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IdleAutomationPlaceholder extends StatelessWidget {
+  const _IdleAutomationPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.public_outlined,
+              size: 56,
+              color: Color(0xFF94A3B8),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Automation is idle.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Choose Run attendance on the Dashboard to pick WFO/WFH/SPJ.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF64748B),
+                  ),
             ),
           ],
         ),
