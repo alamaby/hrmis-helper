@@ -11,6 +11,7 @@ import 'config.dart';
 import 'core/app_logger.dart';
 import 'core/attendance_descriptions.dart';
 import 'core/attendance_prepare_js.dart';
+import 'core/attendance_recorded_js.dart';
 import 'core/attendance_summary.dart';
 import 'core/attendance_type.dart';
 import 'core/hrmis_uri.dart';
@@ -56,6 +57,20 @@ const _submitAttendanceFormJs = '''
     if (!saveButton) {
       console.log('[AutoAttend] Save button not found.');
       return 'missing-save-button';
+    }
+
+    // #attendance-saveButton is an <a> element, so .click() still works when
+    // HRMIS hides it after a recorded attendance. Never submit through a
+    // hidden/disabled button — that would turn a re-run into a clock-out.
+    const style = window.getComputedStyle(saveButton);
+    const hidden =
+      saveButton.disabled ||
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      saveButton.offsetParent === null;
+    if (hidden) {
+      console.log('[AutoAttend] Save button hidden — nothing to submit.');
+      return 'save-button-hidden';
     }
 
     saveButton.scrollIntoView({ behavior: 'instant', block: 'center' });
@@ -162,6 +177,10 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
   bool _isRequestingPermissions = false;
   // Idle until explicit Run — prevents silent WFO auto-run.
   bool _automationRequested = false;
+  // Dedupes the onLoadStop + onUpdateVisitedHistory double-fire for the same
+  // form/navigation URL.
+  String? _lastHandledUrl;
+  DateTime? _lastHandledAt;
 
   final InAppWebViewSettings _settings = InAppWebViewSettings(
     javaScriptEnabled: true,
@@ -307,6 +326,20 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
       return;
     }
 
+    // onUpdateVisitedHistory fires for the same navigation as onLoadStop; a
+    // second call within 1.5s for the same URL is the same event, not a new
+    // page. Swallowing it avoids double injection races that can overwrite a
+    // recorded status with a stale follow-up.
+    final now = DateTime.now();
+    if (_lastHandledUrl == url &&
+        _lastHandledAt != null &&
+        now.difference(_lastHandledAt!) < const Duration(milliseconds: 1500)) {
+      log('[AutoAttend] Deduplicated load-stop for $url');
+      return;
+    }
+    _lastHandledUrl = url;
+    _lastHandledAt = now;
+
     if (HrmisUri.isHomeInspectionPage(uri) &&
         _homeInspectionRequested &&
         !_homeInspectionInProgress &&
@@ -369,6 +402,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
     _homeInspectionRequested = false;
     _homeInspectionInProgress = false;
     _homeInspectionCompleted = false;
+    _lastHandledUrl = null;
+    _lastHandledAt = null;
     _attendanceTodayStatus = AttendanceTodayStatus.checking;
 
     setState(() {
@@ -504,6 +539,53 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
     }
   }
 
+  /// Polls the attendance form state once per second so the asynchronous
+  /// `checkAttendance` rewrite (banner/S2, disabled fields/S3, Clock in
+  /// label/S4) has time to land. Returns the last signals even on budget
+  /// exhaustion so the caller can distinguish "seen but unconfirmed".
+  Future<AttendanceFormSignals> _pollAttendanceFormState({
+    required String earlyExitLabel,
+    required bool Function(AttendanceFormState state) exitWhen,
+    String pollLabel = 'state',
+  }) async {
+    AttendanceFormSignals last = const AttendanceFormSignals(
+      state: AttendanceFormState.pending,
+      signedInMessage: false,
+    );
+
+    for (var attempt = 1;
+        attempt <= attendanceFormStateMaxAttempts;
+        attempt += 1) {
+      if (!mounted) return last;
+
+      if (await _leftAttendanceForm()) {
+        log('[AutoAttend] $pollLabel poll skipped — not on form page.');
+        return last;
+      }
+
+      final raw = await _evaluateJavascript(attendanceFormStateJs);
+      last = AttendanceFormSignals.parse(raw is String ? raw : null);
+      log('[AutoAttend] $pollLabel poll $attempt/$attendanceFormStateMaxAttempts: '
+          '${last.state.code} signedIn=${last.signedInMessage}');
+
+      if (exitWhen(last.state)) {
+        log('[AutoAttend] $pollLabel early exit ($earlyExitLabel) at attempt $attempt.');
+        return last;
+      }
+
+      if (attempt < attendanceFormStateMaxAttempts) {
+        if (last.signedInMessage) {
+          _updateStatus(
+            'Checking recorded attendance ($attempt/$attendanceFormStateMaxAttempts)...',
+          );
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+
+    return last;
+  }
+
   Future<void> _injectAttendanceForm() async {
     if (_attendanceInjected || _attendanceInjectionInProgress) {
       log('[Inject] skipped — already injected/in-progress');
@@ -532,48 +614,38 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
 
     bool injectionActive = true;
     try {
-      final recordedResult = await _evaluateJavascript('''
-        (function () {
-          try {
-            const selectors = [
-              '.messages-group', '.messages-group strong',
-              '.messages-group .messages', '.messages-group span',
-              '.alert.alert-success', '.alert-success',
-              '.alert[role="alert"]', '[role="alert"]',
-              '.alert', '.message', '.success'
-            ].join(', ');
-            const messages = Array.from(
-              document.querySelectorAll(selectors)
-            ).map((element) => (element.textContent || '').trim().toLowerCase());
+      // The checkAttendance rewrite lands seconds after onLoadStop, so poll
+      // the form state instead of trusting a single first-paint reading.
+      final formSignals = await _pollAttendanceFormState(
+        earlyExitLabel: 'recorded/open',
+        exitWhen: (state) =>
+            state == AttendanceFormState.recorded ||
+            state == AttendanceFormState.open,
+      );
 
-            const hasRecordedMessage = messages.some(
-              (message) =>
-                message.includes('attendance has been recorded') ||
-                message.includes('tercatat') ||
-                message.includes('sudah') && message.includes('recorded') ||
-                message.includes('has been recorded at')
-            );
-
-            if (hasRecordedMessage) {
-              console.log('[AutoAttend] Attendance has already been recorded.');
-              return 'attendance-already-recorded';
-            }
-
-            return 'attendance-not-recorded';
-          } catch (error) {
-            console.log('[AutoAttend] Attendance message check failed:', error);
-            return 'attendance-message-check-error';
-          }
-        })();
-      ''');
-
-      log('[Inject] recordedResult=$recordedResult type=${_selectedAttendanceType.label}');
-
-      if (recordedResult == 'attendance-already-recorded') {
+      if (formSignals.state == AttendanceFormState.recorded) {
         _attendanceInjected = true;
+        _attendanceInjectionInProgress = false;
         _attendanceTodayStatus = AttendanceTodayStatus.recorded;
-        _updateStatus('Attendance already recorded.');
+        _updateStatus(
+          'Attendance already recorded${formSignals.signedInAt == null ? '' : ' (${formSignals.signedInAt})'}.',
+        );
+        log('[Inject] Short-circuit — already recorded, skipping form/GPS/save.');
         await _navigateToHomeForInspection();
+        return;
+      }
+
+      if (formSignals.state == AttendanceFormState.pending &&
+          formSignals.signedInMessage) {
+        // T4: HRMIS prints "You are signed in today on HH:mm" but never
+        // confirmed the state (checkAttendance stuck). Never guess a submit
+        // here — a blind POST after a recorded day becomes a clock-out.
+        _attendanceInjectionInProgress = false;
+        _attendanceTodayStatus = AttendanceTodayStatus.failed;
+        _updateStatus(
+          attendanceUnconfirmedStatus(signedInAt: formSignals.signedInAt),
+        );
+        setState(() => _selectedTabIndex = 0);
         return;
       }
 
@@ -594,12 +666,11 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
 
         if (!mounted) return;
 
-        final currentUri = await _currentUri();
-        if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
+        if (await _leftAttendanceForm()) {
           _attendanceInjectionInProgress = false;
           _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
           _updateStatus('Attendance form left before fields were ready.');
-          log('[AutoAttend] Prepare skipped. Current URL: $currentUri');
+          log('[AutoAttend] Prepare skipped — not on form page.');
           return;
         }
 
@@ -616,6 +687,17 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
       if (prepareResult != 'attendance-prepared') {
         _attendanceInjectionInProgress = false;
         _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
+        // A settled (already recorded) form reaching this point means the
+        // state poll timed out without confirming — route it to home
+        // inspection instead of the generic "not ready" branch.
+        if (prepareResult == 'already-recorded') {
+          _attendanceInjected = true;
+          _attendanceTodayStatus = AttendanceTodayStatus.recorded;
+          _updateStatus('Attendance already recorded.');
+          log('[AutoAttend] Prepare reported settled form — going to home.');
+          await _navigateToHomeForInspection();
+          return;
+        }
         _updateStatus(prepareFailureStatus(prepareResult));
         log('[AutoAttend] Attendance preparation result: $prepareResult');
         return;
@@ -630,12 +712,11 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
         for (var attempt = 1; attempt <= maxGeolocationAttempts; attempt += 1) {
           if (!mounted) return;
 
-          final currentUri = await _currentUri();
-          if (currentUri == null || !HrmisUri.isAttendanceForm(currentUri)) {
+          if (await _leftAttendanceForm()) {
             _attendanceInjectionInProgress = false;
             _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
             _updateStatus('Attendance save skipped: not on form page.');
-            log('[AutoAttend] Save skipped. Current URL: $currentUri');
+            log('[AutoAttend] Save skipped — not on form page.');
             return;
           }
 
@@ -691,26 +772,19 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
 
         if (!mounted) return;
 
-        final verifyResult = await _evaluateJavascript('''
-          (function () {
-            try {
-              const messages = Array.from(
-                document.querySelectorAll('.alert, .message, .success, .error, [role="alert"]')
-              );
-              for (const el of messages) {
-                const text = (el.textContent || '').toLowerCase();
-                if (text.includes('sudah') || text.includes('already') || text.includes('tercatat') || text.includes('recorded')) {
-                  return 'attendance-already-recorded';
-                }
-              }
-              return 'attendance-not-recorded';
-            } catch (error) {
-              return 'verify-error';
-            }
-          })();
-        ''');
+        // Same poll as the pre-injection check, but the asymmetry is
+        // deliberate: the POST already happened, so any recorded evidence
+        // (including the S1 server line for the refreshed page) confirms
+        // success. Only an unambiguous open form downgrades to inconclusive.
+        final verifySignals = await _pollAttendanceFormState(
+          earlyExitLabel: 'recorded',
+          exitWhen: (state) => state == AttendanceFormState.recorded,
+          pollLabel: 'verify',
+        );
 
-        if (verifyResult == 'attendance-already-recorded') {
+        final verifyResult = verifySignals.state.code;
+
+        if (verifyResult == 'attendance-recorded') {
           _attendanceTodayStatus = AttendanceTodayStatus.recorded;
           _updateStatus('Attendance verified as recorded.');
         } else {
@@ -721,7 +795,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
         await _navigateToHomeForInspection();
       } else {
         _attendanceTodayStatus = AttendanceTodayStatus.notRecorded;
-        _updateStatus('Attendance save not submitted.');
+        _updateStatus(saveFailureStatus(saveResult));
         log('[AutoAttend] Attendance save result: $saveResult');
       }
     } finally {
@@ -883,6 +957,12 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
     final webUri = await _webViewController?.getUrl();
     if (webUri == null) return null;
     return Uri.tryParse(webUri.toString());
+  }
+
+  /// Returns true when the WebView is no longer on the attendance form route.
+  Future<bool> _leftAttendanceForm() async {
+    final currentUri = await _currentUri();
+    return currentUri == null || !HrmisUri.isAttendanceForm(currentUri);
   }
 
   Future<bool> _hasLoggedInProfile() async {

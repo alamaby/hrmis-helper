@@ -4,6 +4,13 @@ import 'package:codex_auto_attend/core/status_messages.dart';
 
 void main() {
   group('prepareFailureStatus', () {
+    test('maps already-recorded when the form is settled', () {
+      expect(
+        prepareFailureStatus('already-recorded'),
+        'Attendance form is already recorded. Nothing to submit here.',
+      );
+    });
+
     test('maps missing-description', () {
       expect(
         prepareFailureStatus('missing-description'),
@@ -62,6 +69,46 @@ void main() {
         geolocationFailureStatus('unknown'),
         'Form not ready for submission.',
       );
+    });
+  });
+
+  group('saveFailureStatus', () {
+    test('maps save-button-hidden', () {
+      expect(
+        saveFailureStatus('save-button-hidden'),
+        'Attendance save button is hidden — attendance is probably already recorded.',
+      );
+    });
+
+    test('maps missing-save-button and attendance-save-error', () {
+      expect(
+        saveFailureStatus('missing-save-button'),
+        'Attendance save button not found on the form.',
+      );
+      expect(
+        saveFailureStatus('attendance-save-error'),
+        'Attendance save failed on the page.',
+      );
+    });
+
+    test('falls back for unknown or missing codes', () {
+      expect(saveFailureStatus(null), 'Attendance save not submitted.');
+      expect(saveFailureStatus('unknown'), 'Attendance save not submitted.');
+    });
+  });
+
+  group('attendanceUnconfirmedStatus', () {
+    test('includes the sign-in time when known', () {
+      expect(
+        attendanceUnconfirmedStatus(signedInAt: '07:34'),
+        contains('07:34'),
+      );
+    });
+
+    test('still asks for a retry without a time', () {
+      final status = attendanceUnconfirmedStatus();
+      expect(status, contains('may already be recorded'));
+      expect(status, contains('Retry in a moment.'));
     });
   });
 }

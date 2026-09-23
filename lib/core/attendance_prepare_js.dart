@@ -104,6 +104,22 @@ String prepareAttendanceFormJs(AttendanceType type,
       return 'missing-description';
     }
 
+    // A form settled server-side by checkAttendance (recorded / event-only
+    // state) must never be filled — report it instead of silently writing
+    // into a disabled textarea.
+    if (description.disabled) {
+      console.log('[AutoAttend] Description field disabled — form already settled.');
+      return 'already-recorded';
+    }
+
+    const typeRadios = Array.from(
+      document.querySelectorAll('.radio-flag-location')
+    );
+    if (typeRadios.length > 0 && typeRadios.every((radio) => radio.disabled)) {
+      console.log('[AutoAttend] Attendance type radios disabled — form already settled.');
+      return 'already-recorded';
+    }
+
     description.value = '$description';
     description.dispatchEvent(new Event('input', { bubbles: true }));
     description.dispatchEvent(new Event('change', { bubbles: true }));
