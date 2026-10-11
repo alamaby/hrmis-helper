@@ -184,12 +184,15 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
 
   final InAppWebViewSettings _settings = InAppWebViewSettings(
     javaScriptEnabled: true,
-    allowUniversalAccessFromFileURLs: true,
-    allowFileAccessFromFileURLs: true,
-    safeBrowsingEnabled: false,
+    // 🛡️ Sentinel: Security lock-down - Disable cross-origin file access
+    allowUniversalAccessFromFileURLs: false,
+    allowFileAccessFromFileURLs: false,
+    // 🛡️ Sentinel: Security lock-down - Enable Safe Browsing
+    safeBrowsingEnabled: true,
     geolocationEnabled: true,
     javaScriptCanOpenWindowsAutomatically: true,
-    mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+    // 🛡️ Sentinel: Security lock-down - Block mixed content to prevent MITM attacks
+    mixedContentMode: MixedContentMode.MIXED_CONTENT_NEVER_ALLOW,
     mediaPlaybackRequiresUserGesture: false,
   );
 
