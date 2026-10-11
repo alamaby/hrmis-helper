@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/core/attendance_recorded_js.dart';
+import 'package:hrmis_helper/core/attendance_recorded_js.dart';
 
 void main() {
   group('AttendanceFormState', () {

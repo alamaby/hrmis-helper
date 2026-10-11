@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/core/hrmis_uri.dart';
+import 'package:hrmis_helper/core/hrmis_uri.dart';
 
 Uri uriOf(String url) => Uri.parse(url);
 

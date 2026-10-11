@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/core/javascript_result.dart';
+import 'package:hrmis_helper/core/javascript_result.dart';
 
 void main() {
   group('normalizeJavascriptResult', () {

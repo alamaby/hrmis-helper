@@ -2,7 +2,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/core/attendance_descriptions.dart';
+import 'package:hrmis_helper/core/attendance_descriptions.dart';
 
 void main() {
   group('kAttendanceDescriptions', () {
