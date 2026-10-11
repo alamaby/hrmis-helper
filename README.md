@@ -1,25 +1,58 @@
+<div align="center">
+
 # HRMIS Helper
+
+[![Flutter Build Status](https://img.shields.io/github/actions/workflow/status/alamaby/hrmis-helper/flutter.yml?branch=main&logo=github&style=flat-square)](https://github.com/alamaby/hrmis-helper/actions)
+[![Flutter Version](https://img.shields.io/badge/Flutter-3.41%2B-02569B?logo=flutter&style=flat-square)](https://flutter.dev/)
+[![License](https://img.shields.io/github/license/alamaby/hrmis-helper?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/alamaby/hrmis-helper?style=flat-square)](https://github.com/alamaby/hrmis-helper/stargazers)
+[![Forks](https://img.shields.io/github/forks/alamaby/hrmis-helper?style=flat-square)](https://github.com/alamaby/hrmis-helper/network/members)
 
 HRMIS Helper is a Flutter application that assists HRMIS workflows for `https://hrmis.neuron.id` using an embedded WebView.
 
+</div>
+
+<br />
+
 The app loads HRMIS in `flutter_inappwebview`, injects JavaScript for login and attendance form submission, requests the required device permissions, and shows a small status overlay while the automation is running.
+
+## Table of Contents
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Setup](#setup)
+- [Running & Building](#running--building)
+- [Testing](#testing)
+- [Android Permissions](#android-permissions)
+- [Project Structure](#project-structure)
+- [Notes](#notes)
+
+## Screenshots
+
+<div align="center">
+  <!-- TODO: Add actual screenshot images here -->
+  <img src="https://via.placeholder.com/250x500.png?text=Dashboard+Screenshot" width="250" alt="Dashboard" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://via.placeholder.com/250x500.png?text=WebView+Automation" width="250" alt="WebView Automation" />
+</div>
 
 ## Features
 
-- Automated HRMIS login using credentials stored in Android Keystore (`flutter_secure_storage`).
-- In-app credential management screen with validation and password visibility toggle.
-- Attendance type selection (WFO / WFH / SPJ) shown before the automation runs.
-- Geolocation wait is skipped for WFH and SPJ — HRMIS only validates the office geofence for WFO.
-- Existing session detection, so the app can skip login when HRMIS is already authenticated.
-- Automatic navigation to the attendance form.
-- WFO attendance selection and description injection.
-- GPS wait period before saving attendance.
-- Detection for already-recorded attendance messages.
-- Android notifications for HRMIS delay and absence warnings after attendance.
-- Dashboard view with today's attendance status, delay minutes, and absence days.
-- Bottom navigation for switching between Dashboard and Automation WebView.
-- About screen showing app name, package, version, and build number at runtime.
-- Android launcher icon support using `assets/images/app_logo.png`.
+- **Automated Login:** Automated HRMIS login using credentials stored securely in Android Keystore (`flutter_secure_storage`).
+- **Credential Management:** In-app credential management screen with validation and password visibility toggle.
+- **Smart Attendance:**
+  - Attendance type selection (WFO / WFH / SPJ) shown before the automation runs.
+  - Geolocation wait is skipped for WFH and SPJ — HRMIS only validates the office geofence for WFO.
+  - WFO attendance selection and description injection with GPS wait period before saving.
+  - Detection for already-recorded attendance messages.
+- **Session Detection:** Existing session detection, skipping login when HRMIS is already authenticated.
+- **Dashboard & Navigation:**
+  - Dashboard view with today's attendance status, delay minutes, and absence days.
+  - Bottom navigation for switching between Dashboard and Automation WebView.
+- **Notifications:** Android notifications for HRMIS delay and absence warnings after attendance.
+- **System Integrations:**
+  - About screen showing app name, package, version, and build number at runtime.
+  - Android launcher icon support using `assets/images/app_logo.png`.
 
 ## Requirements
 
@@ -30,6 +63,9 @@ The app loads HRMIS in `flutter_inappwebview`, injects JavaScript for login and 
 - A physical Android device or emulator with location support
 
 ## Setup
+
+<details>
+<summary>Click to view setup instructions</summary>
 
 1. Install dependencies:
 
@@ -49,14 +85,13 @@ The app loads HRMIS in `flutter_inappwebview`, injects JavaScript for login and 
    flutter pub run flutter_launcher_icons
    ```
 
-4. Run the app; on first launch it opens the credential screen. Enter your
-   HRMIS username and password there — they are saved to encrypted device
-   storage (Android Keystore) and never leave the device.
+4. Run the app. On the first launch, it opens the credential screen. Enter your HRMIS username and password there. They are saved to encrypted device storage (Android Keystore) and never leave the device.
 
-Credentials can be updated or cleared anytime from the settings FAB on the
-dashboard.
+*Note: Credentials can be updated or cleared anytime from the settings FAB on the dashboard.*
 
-## Running
+</details>
+
+## Running & Building
 
 Run the app on a connected Android device:
 
@@ -70,11 +105,9 @@ Build a debug APK:
 flutter build apk --debug
 ```
 
-The generated APK is available at:
+The generated APK is available at `build/app/outputs/flutter-apk/app-debug.apk`.
 
-```text
-build/app/outputs/flutter-apk/app-debug.apk
-```
+**Build Release APK:**
 
 Build the arm64 release APK used for device installation:
 
@@ -83,19 +116,13 @@ flutter build apk --target-platform android-arm64 --split-per-abi
 ```
 
 Gradle automatically creates a copy of every built APK with a friendly name:
+`build/app/outputs/flutter-apk/HRMIS-Helper-v{version}({build})-{abi}-{buildType}.apk`
 
-```text
-build/app/outputs/flutter-apk/HRMIS-Helper-v{version}({build})-{abi}-{buildType}.apk
-```
-
-Example: `HRMIS-Helper-v1.2.0(6)-arm64-v8a-release.apk`. The original
-`app-*.apk` files remain in place for Flutter's post-build checks.
+*Example: `HRMIS-Helper-v1.2.0(6)-arm64-v8a-release.apk`. The original `app-*.apk` files remain in place for Flutter's post-build checks.*
 
 ## Testing
 
-Unit tests cover the extracted core logic (URL routing, summary parsing,
-JavaScript result normalization, status messages). Widget tests cover the
-dashboard, credential screen, and about screen.
+Unit tests cover the extracted core logic (URL routing, summary parsing, JavaScript result normalization, status messages). Widget tests cover the dashboard, credential screen, and about screen.
 
 ```bash
 flutter test
@@ -107,28 +134,19 @@ With coverage report:
 flutter test --coverage
 ```
 
-## Android Package
+## Android Permissions
 
-The Android package name is:
-
-```text
-com.alamaby.hrmis_helper
-```
-
-## Permissions
-
-The Android app requests:
+The Android app requests the following permissions:
 
 - `INTERNET`
-- `ACCESS_FINE_LOCATION`
-- `ACCESS_COARSE_LOCATION`
-- `CAMERA`
-- `POST_NOTIFICATIONS`
-
-Location and camera permissions are requested before loading the WebView.
-Notification permission is requested so the app can alert users about HRMIS delay or absence information.
+- `ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`: Requested before loading the WebView.
+- `CAMERA`: Requested before loading the WebView.
+- `POST_NOTIFICATIONS`: Requested so the app can alert users about HRMIS delay or absence information.
 
 ## Project Structure
+
+<details>
+<summary>Click to view folder structure</summary>
 
 ```text
 lib/
@@ -154,6 +172,10 @@ test/
   *.dart                    # Unit and widget tests
 ```
 
+</details>
+
 ## Notes
 
 This project is designed for personal/internal HRMIS attendance assistance. Make sure usage complies with your organization's HRMIS and attendance policies.
+
+*Android Package Name: `com.alamaby.hrmis_helper`*

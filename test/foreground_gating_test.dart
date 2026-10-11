@@ -13,13 +13,12 @@ String? keepAliveMessage(bool inProgress, bool isPaused) {
 void main() {
   group('keepAliveMessage mapping', () {
     test('paused while in-progress returns pause status', () {
-      expect(keepAliveMessage(true, true),
-          'Paused — return to app to continue.');
+      expect(
+          keepAliveMessage(true, true), 'Paused — return to app to continue.');
     });
 
     test('resumed while in-progress returns resume status', () {
-      expect(keepAliveMessage(true, false),
-          'Resumed — checking HRMIS...');
+      expect(keepAliveMessage(true, false), 'Resumed — checking HRMIS...');
     });
 
     test('paused when not in-progress returns null (no-op)', () {

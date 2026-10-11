@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/core/attendance_prepare_js.dart';
-import 'package:codex_auto_attend/core/attendance_type.dart';
+import 'package:hrmis_helper/core/attendance_prepare_js.dart';
+import 'package:hrmis_helper/core/attendance_type.dart';
 
 void main() {
   const kTestDescription = 'Bismillah, semangat bekerja!';

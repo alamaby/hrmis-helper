@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/config.dart';
-import 'package:codex_auto_attend/credential_screen.dart';
+import 'package:hrmis_helper/config.dart';
+import 'package:hrmis_helper/credential_screen.dart';
 
 const _secureStorageChannel = MethodChannel(
   'plugins.it_nomads.com/flutter_secure_storage',

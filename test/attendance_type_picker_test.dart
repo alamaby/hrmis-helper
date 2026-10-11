@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/attendance_type_picker.dart';
-import 'package:codex_auto_attend/core/attendance_type.dart';
+import 'package:hrmis_helper/attendance_type_picker.dart';
+import 'package:hrmis_helper/core/attendance_type.dart';
 
 void main() {
   Future<void> openPicker(

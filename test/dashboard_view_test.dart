@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:codex_auto_attend/dashboard_view.dart';
+import 'package:hrmis_helper/dashboard_view.dart';
 
 Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
