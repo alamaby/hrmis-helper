@@ -141,7 +141,8 @@ class _CredentialScreenState extends State<CredentialScreen> {
                           ? Icons.visibility_off
                           : Icons.visibility,
                     ),
-                    tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                    tooltip:
+                        _obscurePassword ? 'Show password' : 'Hide password',
                     onPressed: () {
                       setState(() => _obscurePassword = !_obscurePassword);
                     },
