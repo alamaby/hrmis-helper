@@ -17,10 +17,14 @@ void main() {
     test('entries are safe to splice into a single-quoted JS string', () {
       for (final entry in kAttendanceDescriptions) {
         for (final text in [entry.english, entry.indonesian]) {
-          expect(text, isNot(contains("'")), reason: '$text must not use apostrophes');
-          expect(text, isNot(contains(r'\')), reason: '$text must not use backslashes');
-          expect(text, isNot(contains('\n')), reason: '$text must not span lines');
-          expect(text, isNot(contains('\r')), reason: '$text must not span lines');
+          expect(text, isNot(contains("'")),
+              reason: '$text must not use apostrophes');
+          expect(text, isNot(contains(r'\')),
+              reason: '$text must not use backslashes');
+          expect(text, isNot(contains('\n')),
+              reason: '$text must not span lines');
+          expect(text, isNot(contains('\r')),
+              reason: '$text must not span lines');
           expect(text, text.trim(),
               reason: '$text must not have leading/trailing whitespace');
         }
@@ -29,7 +33,8 @@ void main() {
 
     test('keeps the original Indonesian description as one entry', () {
       expect(
-        kAttendanceDescriptions.any((entry) => entry.indonesian == 'Bismillah, semangat bekerja!'),
+        kAttendanceDescriptions
+            .any((entry) => entry.indonesian == 'Bismillah, semangat bekerja!'),
         isTrue,
       );
     });
@@ -43,7 +48,8 @@ void main() {
     test('always returns a member of the pool', () {
       for (var seed = 0; seed < 50; seed += 1) {
         final picked = pickRandomAttendanceDescription(Random(seed));
-        expect(pool.contains(picked), isTrue, reason: 'Unexpected pick: $picked');
+        expect(pool.contains(picked), isTrue,
+            reason: 'Unexpected pick: $picked');
       }
     });
 
@@ -63,8 +69,8 @@ void main() {
 
       final englishPicks = picks
           .intersection(kAttendanceDescriptions.map((e) => e.english).toSet());
-      final indonesianPicks = picks
-          .intersection(kAttendanceDescriptions.map((e) => e.indonesian).toSet());
+      final indonesianPicks = picks.intersection(
+          kAttendanceDescriptions.map((e) => e.indonesian).toSet());
 
       expect(englishPicks, isNotEmpty);
       expect(indonesianPicks, isNotEmpty);

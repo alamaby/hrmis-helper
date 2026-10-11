@@ -151,7 +151,8 @@ class AttendanceAutomationPage extends StatefulWidget {
       _AttendanceAutomationPageState();
 }
 
-class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> with WidgetsBindingObserver {
+class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
+    with WidgetsBindingObserver {
   static final Uri _loginUri = Uri.parse('https://hrmis.neuron.id/doornew');
   static final Uri _formUri = Uri.parse(
     'https://hrmis.neuron.id/attendance/dashboard/form',
@@ -204,8 +205,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'hrmis_automation',
         channelName: 'HRMIS Automation',
-        channelDescription:
-            'Keeps the app alive while HRMIS attendance runs.',
+        channelDescription: 'Keeps the app alive while HRMIS attendance runs.',
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: true,
@@ -238,8 +238,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
     if (state == AppLifecycleState.paused && _attendanceInjectionInProgress) {
       _updateStatus('Paused — return to app to continue.');
       log('[AutoAttend] Paused during injection');
-    } else if (
-        state == AppLifecycleState.resumed && _attendanceInjectionInProgress) {
+    } else if (state == AppLifecycleState.resumed &&
+        _attendanceInjectionInProgress) {
       _updateStatus('Resumed — checking HRMIS...');
       log('[AutoAttend] Resumed during injection');
     }
@@ -677,9 +677,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
           return;
         }
 
-        prepareResult = await _evaluateJavascript(
-            prepareAttendanceFormJs(_selectedAttendanceType,
-                description: attendanceDescription));
+        prepareResult = await _evaluateJavascript(prepareAttendanceFormJs(
+            _selectedAttendanceType,
+            description: attendanceDescription));
         if (prepareResult == 'attendance-prepared') break;
 
         log(
@@ -723,7 +723,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
             return;
           }
 
-          geolocationResult = await _evaluateJavascript(_checkGeolocationReadyJs);
+          geolocationResult =
+              await _evaluateJavascript(_checkGeolocationReadyJs);
           if (geolocationResult == 'geolocation-ready') break;
 
           log(
@@ -1097,8 +1098,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage> wit
                         _webViewController = controller;
                       },
                       onLoadStart: (_, uri) {
-                        final host =
-                            uri == null ? null : Uri.tryParse(uri.toString())?.host;
+                        final host = uri == null
+                            ? null
+                            : Uri.tryParse(uri.toString())?.host;
                         _updateStatus('Loading ${host ?? 'HRMIS'}...');
                       },
                       onLoadStop: (_, uri) => _handleLoadStop(uri),
