@@ -1,0 +1,67 @@
+name: Build Debug APK (Split Architecture)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build & Upload APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze project source
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Debug APK (Split ABI)
+        run: flutter build apk --debug --split-per-abi
+
+      - name: Rename and Prepare APKs
+        run: |
+          TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+          APP_NAME="hrmis_helper"
+
+          mkdir -p build/app/outputs/flutter-apk/renamed
+
+          # The split per abi command generates APKs like:
+          # build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
+
+          for apk in build/app/outputs/flutter-apk/*-debug.apk; do
+            if [ -f "$apk" ]; then
+              # Extract architecture from filename
+              filename=$(basename -- "$apk")
+              arch=$(echo $filename | sed -e 's/app-//' -e 's/-debug\.apk//')
+
+              new_name="${APP_NAME}_${arch}_${TIMESTAMP}.apk"
+              cp "$apk" "build/app/outputs/flutter-apk/renamed/$new_name"
+              echo "Prepared $new_name"
+            fi
+          done
+
+      - name: Upload APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apks
+          path: build/app/outputs/flutter-apk/renamed/*.apk
+          retention-days: 7
