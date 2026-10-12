@@ -1,0 +1,3 @@
+## $(date +%Y-%m-%d) - Added keyboard navigation and accessibility tooltip to Credential Form
+**Learning:** In Flutter, `IconButton`s without tooltips lack semantic meaning for screen readers. Adding a tooltip automatically acts as an accessibility label. Additionally, utilizing `TextInputAction.next` and `TextInputAction.done` on `TextFormField`s allows seamless keyboard progression and submission. Double-submission prevention is also essential when enabling soft-keyboard submission.
+**Action:** Always verify that icon-only buttons have descriptive `tooltip`s for accessibility, map out keyboard paths using `textInputAction`, and secure submission paths with boolean locks to prevent duplicate asynchronous calls.

@@ -31,6 +31,7 @@ class _CredentialScreenState extends State<CredentialScreen> {
   }
 
   Future<void> _saveCredentials() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
@@ -111,6 +112,7 @@ class _CredentialScreenState extends State<CredentialScreen> {
               const SizedBox(height: 32),
               TextFormField(
                 controller: _usernameController,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Code / Username',
                   prefixIcon: Icon(Icons.person_outline),
@@ -127,6 +129,8 @@ class _CredentialScreenState extends State<CredentialScreen> {
               TextFormField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _saveCredentials(),
                 decoration: InputDecoration(
                   labelText: 'Password',
                   prefixIcon: const Icon(Icons.lock_outline),
@@ -137,6 +141,8 @@ class _CredentialScreenState extends State<CredentialScreen> {
                           ? Icons.visibility_off
                           : Icons.visibility,
                     ),
+                    tooltip:
+                        _obscurePassword ? 'Show password' : 'Hide password',
                     onPressed: () {
                       setState(() => _obscurePassword = !_obscurePassword);
                     },
