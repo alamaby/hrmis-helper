@@ -23,8 +23,12 @@ class Config {
 
   static Future<void> load() async {
     try {
-      _username = (await _storage.read(key: _usernameKey)) ?? '';
-      _password = (await _storage.read(key: _passwordKey)) ?? '';
+      final results = await Future.wait([
+        _storage.read(key: _usernameKey),
+        _storage.read(key: _passwordKey),
+      ]);
+      _username = results[0] ?? '';
+      _password = results[1] ?? '';
     } catch (error) {
       log('[Config] Failed to load credentials: $error');
     }
@@ -34,8 +38,10 @@ class Config {
     try {
       final trimmedUsername = username.trim();
       final trimmedPassword = password.trim();
-      await _storage.write(key: _usernameKey, value: trimmedUsername);
-      await _storage.write(key: _passwordKey, value: trimmedPassword);
+      await Future.wait([
+        _storage.write(key: _usernameKey, value: trimmedUsername),
+        _storage.write(key: _passwordKey, value: trimmedPassword),
+      ]);
       _username = trimmedUsername;
       _password = trimmedPassword;
       return true;
