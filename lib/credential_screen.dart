@@ -136,6 +136,7 @@ class _CredentialScreenState extends State<CredentialScreen> {
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.done,
                   autofillHints: const [AutofillHints.password],
+                  keyboardType: TextInputType.visiblePassword,
                   onFieldSubmitted: (_) => _saveCredentials(),
                   decoration: InputDecoration(
                     labelText: 'Password',

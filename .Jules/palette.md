@@ -6,6 +6,10 @@
 **Learning:** In Flutter, the default screen reader behavior fragments visually distinct, multi-child rows and cards (like a metric card or an info row) into multiple disjointed readouts, which creates poor audio UX. Grouping the entire component in a `Semantics` widget with `excludeSemantics: true` and a unified comma-separated `label` results in a significantly smoother and more coherent screen reader experience.
 **Action:** When creating visually complex data displays (like cards or rows with multiple text components), wrap them in a `Semantics` widget combining their values, instead of relying on Flutter's default child-by-child reading.
 
-## 2024-05-24 - Autofill for Flutter Apps
-**Learning:** Standard form implementations in Flutter lack password manager integration by default. Implementing `AutofillGroup` and `AutofillHints` are crucial for a native feel and to make logging in easy for users utilizing password managers.
-**Action:** Always wrap login form fields with `AutofillGroup` and provide specific hints (`AutofillHints.username`, `AutofillHints.password`) to improve accessibility and user experience.
+## 2026-10-15 - Added credential autofill support
+**Learning:** In Flutter, wrapping a form in an `AutofillGroup` and setting `autofillHints` and `keyboardType` properties enables native OS password managers to save and fill credentials. This requires calling `TextInput.finishAutofillContext()` upon successful validation to signal the OS to save the credentials.
+**Action:** Add autofill support to all login and credential forms to improve user experience and reduce friction.
+
+## 2024-05-24 - Accurate Visual State Indicators
+**Learning:** Using a static checkmark icon (`Icons.task_alt`) for all status messages—even when an operation is "checking", "pending", or has "failed"—creates cognitive dissonance and visual confusion. Users rely heavily on visual cues like spinners for active tasks or warning icons for errors to quickly understand system state without reading the full text.
+**Action:** Always dynamically map icons to their corresponding states (e.g., `CircularProgressIndicator` for loading/checking, `error_outline` for failures) instead of hardcoding a success icon next to a dynamic text message.
