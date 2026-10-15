@@ -5,3 +5,7 @@
 ## 2024-10-12 - Prevent fragmented screen reader audio in visual rows/cards
 **Learning:** In Flutter, the default screen reader behavior fragments visually distinct, multi-child rows and cards (like a metric card or an info row) into multiple disjointed readouts, which creates poor audio UX. Grouping the entire component in a `Semantics` widget with `excludeSemantics: true` and a unified comma-separated `label` results in a significantly smoother and more coherent screen reader experience.
 **Action:** When creating visually complex data displays (like cards or rows with multiple text components), wrap them in a `Semantics` widget combining their values, instead of relying on Flutter's default child-by-child reading.
+
+## 2026-10-15 - Added credential autofill support
+**Learning:** In Flutter, wrapping a form in an `AutofillGroup` and setting `autofillHints` and `keyboardType` properties enables native OS password managers to save and fill credentials. This requires calling `TextInput.finishAutofillContext()` upon successful validation to signal the OS to save the credentials.
+**Action:** Add autofill support to all login and credential forms to improve user experience and reduce friction.
