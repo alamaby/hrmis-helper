@@ -162,7 +162,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
   InAppWebViewController? _webViewController;
   AttendanceType _selectedAttendanceType = AttendanceType.wfo;
   int _selectedTabIndex = 0;
-  final ValueNotifier<String> _status = ValueNotifier('Checking permissions...');
+  final ValueNotifier<String> _status =
+      ValueNotifier('Checking permissions...');
   AttendanceTodayStatus _attendanceTodayStatus = AttendanceTodayStatus.checking;
   int _lateMinutes = 0;
   int _absenceDays = 0;
