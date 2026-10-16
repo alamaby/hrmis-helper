@@ -19,7 +19,7 @@ Future<void> pumpDashboard(
     wrap(
       DashboardView(
         attendanceStatus: attendanceStatus,
-        automationStatus: automationStatus,
+        automationStatusNotifier: ValueNotifier(automationStatus),
         lateMinutes: lateMinutes,
         absenceDays: absenceDays,
         hasRequiredPermissions: hasRequiredPermissions,
