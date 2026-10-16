@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'config.dart';
 import 'about_screen.dart';
 
@@ -33,6 +34,8 @@ class _CredentialScreenState extends State<CredentialScreen> {
   Future<void> _saveCredentials() async {
     if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
+
+    TextInput.finishAutofillContext();
 
     setState(() => _isSaving = true);
 
@@ -98,69 +101,69 @@ class _CredentialScreenState extends State<CredentialScreen> {
         padding: const EdgeInsets.all(24.0),
         child: Form(
           key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.lock_outline,
-                  size: 64, color: Color(0xFF246BFD)),
-              const SizedBox(height: 16),
-              Text(
-                'Enter your HRMIS login details',
-                style: Theme.of(context).textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              TextFormField(
-                controller: _usernameController,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Code / Username',
-                  prefixIcon: Icon(Icons.person_outline),
-                  border: OutlineInputBorder(),
+          child: AutofillGroup(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(Icons.lock_outline,
+                    size: 64, color: Color(0xFF246BFD)),
+                const SizedBox(height: 16),
+                Text(
+                  'Enter your HRMIS login details',
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center,
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your username';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _passwordController,
-                obscureText: _obscurePassword,
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _saveCredentials(),
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
-                    ),
-                    tooltip:
-                        _obscurePassword ? 'Show password' : 'Hide password',
-                    onPressed: () {
-                      setState(() => _obscurePassword = !_obscurePassword);
-                    },
+                const SizedBox(height: 32),
+                TextFormField(
+                  controller: _usernameController,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.username],
+                  decoration: const InputDecoration(
+                    labelText: 'Code / Username',
+                    prefixIcon: Icon(Icons.person_outline),
+                    border: OutlineInputBorder(),
                   ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your username';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Please enter your password';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              Semantics(
-                button: true,
-                label: 'About this app, View app name and version',
-                excludeSemantics: true,
-                child: InkWell(
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const [AutofillHints.password],
+                  keyboardType: TextInputType.visiblePassword,
+                  onFieldSubmitted: (_) => _saveCredentials(),
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
+                      ),
+                      tooltip:
+                          _obscurePassword ? 'Show password' : 'Hide password',
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your password';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+                InkWell(
                   borderRadius: BorderRadius.circular(8),
                   onTap: () {
                     Navigator.of(context).push(
@@ -226,27 +229,27 @@ class _CredentialScreenState extends State<CredentialScreen> {
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _isSaving ? null : _saveCredentials,
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(_isSaving ? 'Saving...' : 'Save Credentials'),
-              ),
-              const SizedBox(height: 12),
-              if (Config.hasCredentials)
-                OutlinedButton.icon(
-                  onPressed: _clearCredentials,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Clear Stored Credentials'),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _isSaving ? null : _saveCredentials,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(_isSaving ? 'Saving...' : 'Save Credentials'),
                 ),
-            ],
+                const SizedBox(height: 12),
+                if (Config.hasCredentials)
+                  OutlinedButton.icon(
+                    onPressed: _clearCredentials,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Clear Stored Credentials'),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

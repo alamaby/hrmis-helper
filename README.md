@@ -138,10 +138,10 @@ flutter test --coverage
 
 The Android app requests the following permissions:
 
-- `INTERNET`
-- `ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`: Requested before loading the WebView.
-- `CAMERA`: Requested before loading the WebView.
-- `POST_NOTIFICATIONS`: Requested so the app can alert users about HRMIS delay or absence information.
+- `INTERNET`: Required to load the HRMIS web portal within the embedded WebView.
+- `ACCESS_FINE_LOCATION` & `ACCESS_COARSE_LOCATION`: Requested before loading the WebView to allow HRMIS to verify your location against the office geofence (required for WFO attendance).
+- `CAMERA`: Requested before loading the WebView. This is necessary because the HRMIS web portal inside the WebView may require camera access (for example, to take a selfie when submitting your attendance).
+- `POST_NOTIFICATIONS`: Requested so the app can alert users about HRMIS delay or absence information after attendance is recorded.
 
 ## Project Structure
 
