@@ -11,7 +11,7 @@ class DashboardView extends StatelessWidget {
   const DashboardView({
     super.key,
     required this.attendanceStatus,
-    required this.automationStatus,
+    required this.automationStatusNotifier,
     required this.lateMinutes,
     required this.absenceDays,
     required this.hasRequiredPermissions,
@@ -23,7 +23,7 @@ class DashboardView extends StatelessWidget {
   });
 
   final AttendanceTodayStatus attendanceStatus;
-  final String automationStatus;
+  final ValueNotifier<String> automationStatusNotifier;
   final int lateMinutes;
   final int absenceDays;
   final bool hasRequiredPermissions;
@@ -54,7 +54,7 @@ class DashboardView extends StatelessWidget {
         const SizedBox(height: 16),
         ActionPanel(
           attendanceStatus: attendanceStatus,
-          automationStatus: automationStatus,
+          automationStatusNotifier: automationStatusNotifier,
           hasRequiredPermissions: hasRequiredPermissions,
           isRequestingPermissions: isRequestingPermissions,
           canRunAttendance: _canRunAttendance,
@@ -191,7 +191,7 @@ class ActionPanel extends StatelessWidget {
   const ActionPanel({
     super.key,
     required this.attendanceStatus,
-    required this.automationStatus,
+    required this.automationStatusNotifier,
     required this.hasRequiredPermissions,
     required this.isRequestingPermissions,
     required this.canRunAttendance,
@@ -202,7 +202,7 @@ class ActionPanel extends StatelessWidget {
   });
 
   final AttendanceTodayStatus attendanceStatus;
-  final String automationStatus;
+  final ValueNotifier<String> automationStatusNotifier;
   final bool hasRequiredPermissions;
   final bool isRequestingPermissions;
   final bool canRunAttendance;
@@ -248,11 +248,16 @@ class ActionPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Text(
-            automationStatus,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF64748B),
-                ),
+          ValueListenableBuilder<String>(
+            valueListenable: automationStatusNotifier,
+            builder: (context, status, _) {
+              return Text(
+                status,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF64748B),
+                    ),
+              );
+            },
           ),
           const SizedBox(height: 16),
           if (canRunAttendance && selectedTypeLabel != null) ...[

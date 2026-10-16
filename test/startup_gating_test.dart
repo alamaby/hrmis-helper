@@ -17,7 +17,8 @@ void main() {
         wrap(
           DashboardView(
             attendanceStatus: AttendanceTodayStatus.checking,
-            automationStatus: 'Choose Run attendance to start.',
+            automationStatusNotifier:
+                ValueNotifier('Choose Run attendance to start.'),
             lateMinutes: 0,
             absenceDays: 0,
             hasRequiredPermissions: true,
@@ -41,7 +42,7 @@ void main() {
         wrap(
           DashboardView(
             attendanceStatus: AttendanceTodayStatus.checking,
-            automationStatus: 'Automation is idle.',
+            automationStatusNotifier: ValueNotifier('Automation is idle.'),
             lateMinutes: 0,
             absenceDays: 0,
             hasRequiredPermissions: true,
@@ -62,7 +63,8 @@ void main() {
         wrap(
           DashboardView(
             attendanceStatus: AttendanceTodayStatus.recorded,
-            automationStatus: 'Attendance already recorded.',
+            automationStatusNotifier:
+                ValueNotifier('Attendance already recorded.'),
             lateMinutes: 0,
             absenceDays: 0,
             hasRequiredPermissions: true,

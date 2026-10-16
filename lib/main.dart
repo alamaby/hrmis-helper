@@ -162,7 +162,8 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
   InAppWebViewController? _webViewController;
   AttendanceType _selectedAttendanceType = AttendanceType.wfo;
   int _selectedTabIndex = 0;
-  String _status = 'Checking permissions...';
+  final ValueNotifier<String> _status =
+      ValueNotifier('Checking permissions...');
   AttendanceTodayStatus _attendanceTodayStatus = AttendanceTodayStatus.checking;
   int _lateMinutes = 0;
   int _absenceDays = 0;
@@ -228,6 +229,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
 
   @override
   void dispose() {
+    _status.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _releaseKeepAlive();
     super.dispose();
@@ -270,17 +272,17 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
     if (!mounted) return;
     setState(() {
       _hasRequiredPermissions = locationGranted && cameraGranted;
-      _status = _hasRequiredPermissions
-          ? 'Choose Run attendance to start.'
-          : 'Location and camera permissions are required.';
     });
+    _status.value = _hasRequiredPermissions
+        ? 'Choose Run attendance to start.'
+        : 'Location and camera permissions are required.';
   }
 
   Future<void> _requestPermissions() async {
     setState(() {
       _isRequestingPermissions = true;
-      _status = 'Requesting permissions...';
     });
+    _status.value = 'Requesting permissions...';
 
     final results = await [
       Permission.locationWhenInUse,
@@ -295,10 +297,10 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
     setState(() {
       _isRequestingPermissions = false;
       _hasRequiredPermissions = locationGranted && cameraGranted;
-      _status = _hasRequiredPermissions
-          ? 'Choose Run attendance to start.'
-          : 'Please grant location and camera permissions to continue.';
     });
+    _status.value = _hasRequiredPermissions
+        ? 'Choose Run attendance to start.'
+        : 'Please grant location and camera permissions to continue.';
   }
 
   Future<void> _openCredentialScreen() async {
@@ -411,10 +413,10 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
 
     setState(() {
       _selectedTabIndex = 1;
-      _status = _hasRequiredPermissions
-          ? 'Opening HRMIS...'
-          : 'Location and camera permissions are required.';
     });
+    _status.value = _hasRequiredPermissions
+        ? 'Opening HRMIS...'
+        : 'Location and camera permissions are required.';
 
     if (!_hasRequiredPermissions) return;
 
@@ -1021,7 +1023,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
 
   void _updateStatus(String status) {
     if (!mounted) return;
-    setState(() => _status = status);
+    _status.value = status;
   }
 
   @override
@@ -1035,7 +1037,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
             Builder(
               builder: (innerContext) => DashboardView(
                 attendanceStatus: _attendanceTodayStatus,
-                automationStatus: _status,
+                automationStatusNotifier: _status,
                 lateMinutes: _lateMinutes,
                 absenceDays: _absenceDays,
                 hasRequiredPermissions: _hasRequiredPermissions,
@@ -1137,7 +1139,7 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
           left: 12,
           right: 12,
           top: 12,
-          child: _StatusOverlay(status: _status),
+          child: _StatusOverlay(statusNotifier: _status),
         ),
       ],
     );
@@ -1145,9 +1147,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
 }
 
 class _StatusOverlay extends StatelessWidget {
-  const _StatusOverlay({required this.status});
+  const _StatusOverlay({required this.statusNotifier});
 
-  final String status;
+  final ValueNotifier<String> statusNotifier;
 
   @override
   Widget build(BuildContext context) {
@@ -1167,14 +1169,19 @@ class _StatusOverlay extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                status,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
+              child: ValueListenableBuilder<String>(
+                valueListenable: statusNotifier,
+                builder: (context, status, _) {
+                  return Text(
+                    status,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  );
+                },
               ),
             ),
           ],
