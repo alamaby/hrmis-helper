@@ -1,0 +1,3 @@
+## 2024-05-15 - Unnecessary Root Widget Re-renders
+**Learning:** The root widget (`AutoAttendApp` / `AttendanceAutomationPage`) in this Flutter app contains both the Dashboard and a heavy `InAppWebView`. Frequent status updates that don't actually change the string value were triggering `setState`, causing expensive, unnecessary re-renders of the native WebView container and the entire dashboard.
+**Action:** Always check if the value is actually different (`if (_state == newState) return;`) before calling `setState` on root-level widgets or widgets containing expensive platform views like WebViews.

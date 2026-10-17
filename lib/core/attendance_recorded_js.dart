@@ -81,8 +81,11 @@ class AttendanceFormSignals {
   /// The `HH:mm` part reported by HRMIS, when available.
   final String? signedInAt;
 
+  // ⚡ Bolt: Cache RegExp compilation to prevent redundant allocations during polling loop.
+  static final _signedInAtPattern = RegExp(r'signed-in-at-(\d{1,2}:\d{2})');
+
   static String? _extractSignedInAt(String raw) {
-    final match = RegExp(r'signed-in-at-(\d{1,2}:\d{2})').firstMatch(raw);
+    final match = _signedInAtPattern.firstMatch(raw);
     return match?.group(1);
   }
 }
