@@ -13,12 +13,13 @@ void main() {
     // it receives via automationStatus, so we validate that contract here.
 
     testWidgets('shows "Choose Run" status when idle', (tester) async {
+      final statusNotifier = ValueNotifier('Choose Run attendance to start.');
+      addTearDown(statusNotifier.dispose);
       await tester.pumpWidget(
         wrap(
           DashboardView(
             attendanceStatus: AttendanceTodayStatus.checking,
-            automationStatusNotifier:
-                ValueNotifier('Choose Run attendance to start.'),
+            automationStatusNotifier: statusNotifier,
             lateMinutes: 0,
             absenceDays: 0,
             hasRequiredPermissions: true,
@@ -38,11 +39,13 @@ void main() {
     });
 
     testWidgets('shows Run button while checking and idle', (tester) async {
+      final statusNotifier = ValueNotifier('Automation is idle.');
+      addTearDown(statusNotifier.dispose);
       await tester.pumpWidget(
         wrap(
           DashboardView(
             attendanceStatus: AttendanceTodayStatus.checking,
-            automationStatusNotifier: ValueNotifier('Automation is idle.'),
+            automationStatusNotifier: statusNotifier,
             lateMinutes: 0,
             absenceDays: 0,
             hasRequiredPermissions: true,
@@ -59,12 +62,13 @@ void main() {
 
     testWidgets('switches to Open automation view after recorded',
         (tester) async {
+      final statusNotifier = ValueNotifier('Attendance already recorded.');
+      addTearDown(statusNotifier.dispose);
       await tester.pumpWidget(
         wrap(
           DashboardView(
             attendanceStatus: AttendanceTodayStatus.recorded,
-            automationStatusNotifier:
-                ValueNotifier('Attendance already recorded.'),
+            automationStatusNotifier: statusNotifier,
             lateMinutes: 0,
             absenceDays: 0,
             hasRequiredPermissions: true,
