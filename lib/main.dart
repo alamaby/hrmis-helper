@@ -1021,6 +1021,9 @@ class _AttendanceAutomationPageState extends State<AttendanceAutomationPage>
 
   void _updateStatus(String status) {
     if (!mounted) return;
+    // ⚡ Bolt: Prevent unnecessary re-renders of the heavy InAppWebView container
+    // by skipping setState if the status hasn't actually changed.
+    if (_status == status) return;
     setState(() => _status = status);
   }
 
