@@ -47,6 +47,8 @@ ios/.symlinks/
 PROJECT_MEMORY.md
 system_prompt.md
 view_source_hrmis/
+.zcode/
+temp/
 
 # Unused design drafts
 assets/images/mai-image-*
