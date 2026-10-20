@@ -15,11 +15,13 @@ Future<void> pumpDashboard(
   bool isRequestingPermissions = false,
   String? selectedTypeLabel,
 }) {
+  final statusNotifier = ValueNotifier(automationStatus);
+  addTearDown(statusNotifier.dispose);
   return tester.pumpWidget(
     wrap(
       DashboardView(
         attendanceStatus: attendanceStatus,
-        automationStatus: automationStatus,
+        automationStatusNotifier: statusNotifier,
         lateMinutes: lateMinutes,
         absenceDays: absenceDays,
         hasRequiredPermissions: hasRequiredPermissions,
