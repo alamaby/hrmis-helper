@@ -9,3 +9,7 @@
 ## 2026-10-15 - Added credential autofill support
 **Learning:** In Flutter, wrapping a form in an `AutofillGroup` and setting `autofillHints` and `keyboardType` properties enables native OS password managers to save and fill credentials. This requires calling `TextInput.finishAutofillContext()` upon successful validation to signal the OS to save the credentials.
 **Action:** Add autofill support to all login and credential forms to improve user experience and reduce friction.
+
+## 2026-10-20 - Accurate Visual State Indicators
+**Learning:** Using a static checkmark icon (`Icons.task_alt`) for all status messages—even when an operation is "checking", "pending", or has "failed"—creates cognitive dissonance and visual confusion. Users rely heavily on visual cues like spinners for active tasks or warning icons for errors to quickly understand system state without reading the full text.
+**Action:** Always dynamically map icons to their corresponding states (e.g., `CircularProgressIndicator` for loading/checking, `error_outline` for failures) instead of hardcoding a success icon next to a dynamic text message.

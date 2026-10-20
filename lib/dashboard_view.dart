@@ -223,6 +223,20 @@ class ActionPanel extends StatelessWidget {
       AttendanceTodayStatus.checking => 'Automation is checking HRMIS.',
     };
 
+    Widget statusIcon = switch (attendanceStatus) {
+      AttendanceTodayStatus.recorded =>
+        const Icon(Icons.task_alt, color: Color(0xFF0F766E)),
+      AttendanceTodayStatus.failed =>
+        const Icon(Icons.error_outline, color: Color(0xFFB91C1C)),
+      AttendanceTodayStatus.notRecorded =>
+        const Icon(Icons.pending_actions, color: Color(0xFFB45309)),
+      AttendanceTodayStatus.checking => const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+    };
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -235,7 +249,7 @@ class ActionPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.task_alt, color: Color(0xFF0F766E)),
+              statusIcon,
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

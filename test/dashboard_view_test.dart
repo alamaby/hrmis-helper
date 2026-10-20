@@ -133,6 +133,29 @@ void main() {
 
       expect(find.textContaining('Last attendance type'), findsNothing);
     });
+
+    testWidgets('shows a status-specific icon', (tester) async {
+      await pumpDashboard(
+        tester,
+        attendanceStatus: AttendanceTodayStatus.failed,
+      );
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+
+      await pumpDashboard(
+        tester,
+        attendanceStatus: AttendanceTodayStatus.recorded,
+      );
+      expect(find.byIcon(Icons.task_alt), findsOneWidget);
+
+      await pumpDashboard(
+        tester,
+        attendanceStatus: AttendanceTodayStatus.notRecorded,
+      );
+      expect(find.byIcon(Icons.pending_actions), findsOneWidget);
+
+      await pumpDashboard(tester);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
   });
 
   group('StatusTimeline', () {
